@@ -150,8 +150,8 @@ fun AcousticModemScreen(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = TacticalCyan,
                     unfocusedBorderColor = PanelBorder,
-                    focusedContainerColor = ObsidianBg,
-                    unfocusedContainerColor = ObsidianBg,
+                    focusedContainerColor = Color(0x99060910),
+                    unfocusedContainerColor = Color(0x99060910),
                     focusedLabelColor = TacticalCyan,
                     unfocusedLabelColor = TextMuted
                 ),
@@ -177,7 +177,7 @@ fun AcousticModemScreen(
                                 onMessageChange(preset)
                             },
                         color = GunmetalElevated,
-                        shape = RoundedCornerShape(4.dp),
+                        shape = RoundedCornerShape(14.dp),
                         border = BorderStroke(1.dp, PanelBorder)
                     ) {
                         Text(
@@ -229,7 +229,7 @@ fun AcousticModemScreen(
                     .fillMaxWidth()
                     .minimumInteractiveComponentSize()
                     .testTag("transmit_audio_button"),
-                shape = RoundedCornerShape(4.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (state.isTransmitting) CrimsonPulse else TacticalCyan,
                     contentColor = if (state.isTransmitting) TextPrimary else ObsidianBg
@@ -297,9 +297,9 @@ fun AcousticModemScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(Color(0xFF05070A))
-                    .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
+                    .border(1.dp, PanelBorder, RoundedCornerShape(14.dp))
                     .padding(8.dp)
             ) {
                 Text(
@@ -320,9 +320,9 @@ fun AcousticModemScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(Color(0xFF05070A))
-                    .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
+                    .border(1.dp, PanelBorder, RoundedCornerShape(14.dp))
                     .padding(8.dp)
             ) {
                 Text(
@@ -350,7 +350,7 @@ private fun CarrierBandButton(
             .minimumInteractiveComponentSize()
             .clickable(onClick = onClick),
         color = if (selected) accent.copy(alpha = 0.16f) else GunmetalElevated,
-        shape = RoundedCornerShape(4.dp),
+        shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, if (selected) accent else PanelBorder)
     ) {
         Row(
@@ -391,9 +391,9 @@ private fun WaveformCanvas(
         modifier = Modifier
             .fillMaxWidth()
             .height(92.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color(0xFF05070A))
-            .border(1.dp, if (isTransmitting) accentColor else PanelBorder, RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0x99050810))
+            .border(1.dp, if (isTransmitting) accentColor else PanelBorder, RoundedCornerShape(14.dp))
             .semantics { contentDescription = desc }
             .testTag("waveform_visualizer")
     ) {

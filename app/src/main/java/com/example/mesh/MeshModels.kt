@@ -22,6 +22,10 @@ data class MeshNode(
     val ipAddress: String? = null,
     val tcpPort: Int? = null,
     val bleAddress: String? = null,
+    val isCodedPhy: Boolean = false,
+    val btClassicAddress: String? = null,
+    val wifiDirectAddress: String? = null,
+    val wifiDirectConnected: Boolean = false,
     val distanceMeters: Float = 0f,
     val lastSeenMs: Long = 0L
 )

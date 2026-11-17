@@ -82,4 +82,14 @@ class AetherMeshLogicTest {
         val farMeters = MeshRouter.estimateDistanceMetersFromRssi(-85)
         assertTrue(farMeters > nearMeters)
     }
+
+    @Test
+    fun hypRangeCodedPhyExtendsLinkRange() {
+        val self = MeshRouter.buildSelfNode("AETH-0000", "Phone")
+        val stdPeer = MeshNode("AETH-1111", "TabStd", NodeRole.REAL_PEER, 2.4f, 0.0f, isOnline = true, isCodedPhy = false)
+        val hypPeer = MeshNode("AETH-2222", "TabHyp", NodeRole.REAL_PEER, 2.4f, 0.0f, isOnline = true, isCodedPhy = true)
+
+        assertTrue(MeshRouter.buildLinks(listOf(self, stdPeer), rangeKm = 2.0f).isEmpty())
+        assertEquals(1, MeshRouter.buildLinks(listOf(self, hypPeer), rangeKm = 2.0f).size)
+    }
 }

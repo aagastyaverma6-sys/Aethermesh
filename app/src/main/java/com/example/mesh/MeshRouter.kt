@@ -30,10 +30,16 @@ object MeshRouter {
     )
 
     /**
-     * Converts a real BLE RSSI value (dBm) into an approximate distance in meters.
+     * Converts a real RSSI value (dBm) into an approximate distance in meters.
+     * BLE 5 Coded PHY (HypRange) uses a longer sensitivity curve (down to -103 dBm).
      */
-    fun estimateDistanceMetersFromRssi(rssiDbm: Int, txPowerAt1m: Int = -59): Float {
-        val ratio = (txPowerAt1m - rssiDbm) / 22.0
+    fun estimateDistanceMetersFromRssi(
+        rssiDbm: Int,
+        txPowerAt1m: Int = -59,
+        isCodedPhy: Boolean = false
+    ): Float {
+        val envFactor = if (isCodedPhy) 26.0 else 22.0
+        val ratio = (txPowerAt1m - rssiDbm) / envFactor
         return 10.0.pow(ratio).toFloat().coerceIn(0.5f, 4500f)
     }
 
@@ -47,12 +53,11 @@ object MeshRouter {
     ): Pair<Float, Float> {
         val hash = abs(nodeId.hashCode())
         val angleRad = ((hash % 360) * Math.PI / 180.0)
-        // Map 0.5m..200m+ real proximity cleanly onto 0.9km..3.8km visual radar ring so nodes remain tappable
         val visualRadiusKm = when {
             distanceMeters <= 0f -> 1.45f
             distanceMeters < 10f -> 0.95f + (distanceMeters / 10f) * 0.55f
-            distanceMeters < 80f -> 1.50f + ((distanceMeters - 10f) / 70f) * 1.15f
-            else -> (2.65f + (distanceMeters / 1000f)).coerceAtMost(4.2f)
+            distanceMeters < 120f -> 1.50f + ((distanceMeters - 10f) / 110f) * 1.35f
+            else -> (2.85f + (distanceMeters / 1000f)).coerceAtMost(4.2f)
         }
         val x = (cos(angleRad) * visualRadiusKm).toFloat()
         val y = (sin(angleRad) * visualRadiusKm).toFloat()
@@ -81,7 +86,12 @@ object MeshRouter {
                 val b = nodes[j]
                 if (!b.isOnline) continue
                 val dist = distanceKm(a, b)
-                if (dist <= rangeKm) {
+                val effectiveRangeKm = if (a.isCodedPhy || b.isCodedPhy) {
+                    (rangeKm * 1.45f).coerceAtMost(RADAR_RADIUS_KM)
+                } else {
+                    rangeKm
+                }
+                if (dist <= effectiveRangeKm) {
                     val key = if (a.id < b.id) a.id to b.id else b.id to a.id
                     val onRoute = key in routeEdges
                     val latency = (dist * 12f + 4f).roundToInt().coerceAtLeast(3)
@@ -176,7 +186,12 @@ object MeshRouter {
         for ((uId, vId) in previousPath.zipWithNext()) {
             val u = nodeMap[uId] ?: return uId
             val v = nodeMap[vId] ?: return vId
-            if (distanceKm(u, v) > rangeKm) {
+            val effectiveRangeKm = if (u.isCodedPhy || v.isCodedPhy) {
+                (rangeKm * 1.45f).coerceAtMost(RADAR_RADIUS_KM)
+            } else {
+                rangeKm
+            }
+            if (distanceKm(u, v) > effectiveRangeKm) {
                 return "$uId<->$vId"
             }
         }

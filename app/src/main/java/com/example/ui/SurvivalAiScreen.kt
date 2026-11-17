@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -127,8 +128,8 @@ fun SurvivalAiScreen(
                         modifier = Modifier
                             .testTag("triage_chip_$idx")
                             .minimumInteractiveComponentSize()
-                            .clip(RoundedCornerShape(4.dp))
-                            .border(1.dp, CrimsonPulse.copy(alpha = 0.65f), RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(1.dp, CrimsonPulse.copy(alpha = 0.65f), RoundedCornerShape(14.dp))
                             .background(CrimsonPulse.copy(alpha = 0.12f))
                             .clickable { onQueryAi(prompt) }
                             .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -161,8 +162,8 @@ fun SurvivalAiScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-                    .background(ObsidianBg, RoundedCornerShape(4.dp))
+                    .border(1.dp, PanelBorder, RoundedCornerShape(14.dp))
+                    .background(Color(0x99060910), RoundedCornerShape(14.dp))
                     .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -197,8 +198,8 @@ fun SurvivalAiScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .border(1.dp, CrimsonPulse, RoundedCornerShape(4.dp))
-                                .background(CrimsonPulse.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
+                                .border(1.dp, CrimsonPulse, RoundedCornerShape(14.dp))
+                                .background(CrimsonPulse.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -306,8 +307,8 @@ fun SurvivalAiScreen(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PhosphorEmerald,
                         unfocusedBorderColor = PanelBorder,
-                        focusedContainerColor = ObsidianBg,
-                        unfocusedContainerColor = ObsidianBg
+                        focusedContainerColor = Color(0x99060910),
+                        unfocusedContainerColor = Color(0x99060910)
                     )
                 )
 
@@ -322,8 +323,8 @@ fun SurvivalAiScreen(
                     modifier = Modifier
                         .testTag("ai_send_button")
                         .size(52.dp)
-                        .border(1.dp, PhosphorEmerald, RoundedCornerShape(4.dp))
-                        .background(PhosphorEmerald.copy(alpha = 0.16f), RoundedCornerShape(4.dp))
+                        .border(1.dp, PhosphorEmerald, RoundedCornerShape(14.dp))
+                        .background(PhosphorEmerald.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
                 ) {
                     Icon(
                         imageVector = Icons.Default.Send,
@@ -352,8 +353,8 @@ private fun TriageProtocolCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-            .background(accent.copy(alpha = 0.06f), RoundedCornerShape(4.dp))
+            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+            .background(accent.copy(alpha = 0.06f), RoundedCornerShape(14.dp))
             .padding(9.dp)
     ) {
         Row(

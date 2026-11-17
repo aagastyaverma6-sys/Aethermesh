@@ -1,6 +1,8 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,9 +36,6 @@ import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,6 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -61,8 +63,7 @@ import com.example.R
 import com.example.mesh.PinCategory
 import com.example.ui.theme.CrimsonPulse
 import com.example.ui.theme.ElectricAmber
-import com.example.ui.theme.GunmetalElevated
-import com.example.ui.theme.GunmetalPanel
+import com.example.ui.theme.HypRangeViolet
 import com.example.ui.theme.ObsidianBg
 import com.example.ui.theme.PanelBorder
 import com.example.ui.theme.PhosphorEmerald
@@ -97,7 +98,7 @@ fun AetherMeshApp(
     val triageHistory by viewModel.triageHistory.collectAsStateWithLifecycle()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    var desktopCenterMode by rememberSaveable { mutableIntStateOf(0) } // 0 = Radar, 1 = Acoustic Modem
+    var desktopCenterMode by rememberSaveable { mutableIntStateOf(0) }
 
     val dropPinNearSelf: (PinCategory) -> Unit = { cat ->
         val angle = Random.nextDouble(0.0, Math.PI * 2.0)
@@ -109,78 +110,170 @@ fun AetherMeshApp(
         )
     }
 
-    val batteryAlpha = if (meshState.batterySaverEnabled) 0.86f else 1f
+    val batteryAlpha = if (meshState.batterySaverEnabled) 0.88f else 1f
+    val radioPermissions = viewModel.getRequiredRadioPermissions()
 
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ObsidianBg)
-            .alpha(batteryAlpha)
-    ) {
-        val isWideCommandCenter = maxWidth >= 900.dp
+    ProvideLiquidGlassClock(batterySaver = meshState.batterySaverEnabled) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ObsidianBg)
+                .alpha(batteryAlpha)
+        ) {
+            // Dynamic volumetric light field refracted by all Liquid Glass surfaces
+            LiquidAmbientBackground(batterySaver = meshState.batterySaverEnabled)
 
-        if (isWideCommandCenter) {
-            Scaffold(
-                containerColor = ObsidianBg,
-                contentWindowInsets = WindowInsets.safeDrawing,
-                topBar = {
-                    TopCommandHeader(
-                        meshState = meshState,
-                        onToggleBatterySaver = viewModel::toggleBatterySaver,
-                        modifier = Modifier.windowInsetsPadding(
-                            WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
-                        )
-                    )
-                }
-            ) { innerPadding ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                ) {
-                    TelemetryAndPinsScreen(
-                        state = meshState,
-                        onToggleBatterySaver = viewModel::toggleBatterySaver,
-                        onArmPin = viewModel::armPinCategory,
-                        onDropPinNearSelf = dropPinNearSelf,
-                        onClearPins = viewModel::clearPins,
-                        onToggleWrongKeyTest = viewModel::toggleSimulateWrongKey,
-                        onNavigateToRadarForPin = { desktopCenterMode = 0 },
-                        modifier = Modifier
-                            .weight(0.95f)
-                            .fillMaxHeight()
-                    )
+            val isWideCommandCenter = maxWidth >= 900.dp
 
-                    Column(
-                        modifier = Modifier
-                            .weight(1.35f)
-                            .fillMaxHeight()
-                    ) {
-                        Row(
+            if (isWideCommandCenter) {
+                Scaffold(
+                    containerColor = Color.Transparent,
+                    contentWindowInsets = WindowInsets.safeDrawing,
+                    topBar = {
+                        TopCommandHeader(
+                            meshState = meshState,
+                            onToggleBatterySaver = viewModel::toggleBatterySaver,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                .windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+                                )
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                ) { innerPadding ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    ) {
+                        TelemetryAndPinsScreen(
+                            state = meshState,
+                            onToggleBatterySaver = viewModel::toggleBatterySaver,
+                            onArmPin = viewModel::armPinCategory,
+                            onDropPinNearSelf = dropPinNearSelf,
+                            onClearPins = viewModel::clearPins,
+                            onToggleWrongKeyTest = viewModel::toggleSimulateWrongKey,
+                            onNavigateToRadarForPin = { desktopCenterMode = 0 },
+                            modifier = Modifier
+                                .weight(0.95f)
+                                .fillMaxHeight()
+                        )
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1.35f)
+                                .fillMaxHeight()
                         ) {
-                            CenterStageChip(
-                                text = "MESH TOPOLOGY RADAR",
-                                selected = desktopCenterMode == 0,
-                                onClick = { desktopCenterMode = 0 },
-                                modifier = Modifier.weight(1f)
-                            )
-                            CenterStageChip(
-                                text = "ACOUSTIC FSK MODEM",
-                                selected = desktopCenterMode == 1,
-                                onClick = { desktopCenterMode = 1 },
-                                modifier = Modifier.weight(1f)
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CenterStageChip(
+                                    text = "MESH TOPOLOGY RADAR",
+                                    selected = desktopCenterMode == 0,
+                                    onClick = { desktopCenterMode = 0 },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                CenterStageChip(
+                                    text = "ACOUSTIC FSK MODEM",
+                                    selected = desktopCenterMode == 1,
+                                    onClick = { desktopCenterMode = 1 },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            if (desktopCenterMode == 0) {
+                                MeshRadarScreen(
+                                    state = meshState,
+                                    radioPermissions = radioPermissions,
+                                    onRadioPermissionsResult = viewModel::onRadioPermissionsResult,
+                                    onToggleHypRange = { viewModel.toggleHypRange() },
+                                    onToggleBtClassic = { viewModel.toggleBtClassic() },
+                                    onToggleWifiDirect = { viewModel.toggleWifiDirect() },
+                                    onCreateWifiDirectGroup = viewModel::createWifiDirectGroup,
+                                    onConnectWifiDirectPeer = viewModel::connectWifiDirectPeer,
+                                    onDragNode = viewModel::onNodeDrag,
+                                    onTapNode = viewModel::selectNode,
+                                    onToggleNodeOnline = viewModel::toggleNodeOnline,
+                                    onRescanPeers = viewModel::rescanPeers,
+                                    onToggleBlackout = viewModel::toggleDisasterBlackout,
+                                    onBroadcastSos = viewModel::broadcastSosPacket,
+                                    onSendP2pMessage = viewModel::sendP2pMessage,
+                                    onUpdateRangeKm = viewModel::updateLinkRange,
+                                    onArmPin = viewModel::armPinCategory,
+                                    onDropPinAt = { x, y -> viewModel.dropPinAt(x, y) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            } else {
+                                AcousticModemScreen(
+                                    state = acousticState,
+                                    batterySaver = meshState.batterySaverEnabled,
+                                    onMessageChange = viewModel::updateAcousticMessage,
+                                    onHighBandToggle = viewModel::setAcousticHighBand,
+                                    onTransmitPulse = viewModel::transmitAudioPulse,
+                                    onStopPulse = viewModel::stopAudioPulse,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
 
-                        if (desktopCenterMode == 0) {
-                            MeshRadarScreen(
+                        SurvivalAiScreen(
+                            aiState = aiState,
+                            history = triageHistory,
+                            batterySaverEnabled = meshState.batterySaverEnabled,
+                            onQueryAi = viewModel::querySurvivalAi,
+                            onClearSession = viewModel::clearAiSession,
+                            modifier = Modifier
+                                .weight(1.0f)
+                                .fillMaxHeight()
+                        )
+                    }
+                }
+            } else {
+                BackHandler(enabled = selectedTab != 0) {
+                    selectedTab = 0
+                }
+
+                Scaffold(
+                    containerColor = Color.Transparent,
+                    contentWindowInsets = WindowInsets.safeDrawing,
+                    topBar = {
+                        TopCommandHeader(
+                            meshState = meshState,
+                            onToggleBatterySaver = viewModel::toggleBatterySaver,
+                            modifier = Modifier
+                                .windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+                                )
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    },
+                    bottomBar = {
+                        LiquidGlassNavigationDock(
+                            selectedTab = selectedTab,
+                            onSelectTab = { selectedTab = it },
+                            batterySaver = meshState.batterySaverEnabled,
+                            accentColor = if (meshState.hypRangeEnabled) HypRangeViolet else PhosphorEmerald
+                        )
+                    }
+                ) { innerPadding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    ) {
+                        when (selectedTab) {
+                            0 -> MeshRadarScreen(
                                 state = meshState,
-                                blePermissions = viewModel.getRequiredBlePermissions(),
-                                onBlePermissionsResult = viewModel::onBlePermissionsResult,
+                                radioPermissions = radioPermissions,
+                                onRadioPermissionsResult = viewModel::onRadioPermissionsResult,
+                                onToggleHypRange = { viewModel.toggleHypRange() },
+                                onToggleBtClassic = { viewModel.toggleBtClassic() },
+                                onToggleWifiDirect = { viewModel.toggleWifiDirect() },
+                                onCreateWifiDirectGroup = viewModel::createWifiDirectGroup,
+                                onConnectWifiDirectPeer = viewModel::connectWifiDirectPeer,
                                 onDragNode = viewModel::onNodeDrag,
                                 onTapNode = viewModel::selectNode,
                                 onToggleNodeOnline = viewModel::toggleNodeOnline,
@@ -190,137 +283,33 @@ fun AetherMeshApp(
                                 onSendP2pMessage = viewModel::sendP2pMessage,
                                 onUpdateRangeKm = viewModel::updateLinkRange,
                                 onArmPin = viewModel::armPinCategory,
-                                onDropPinAt = { x, y -> viewModel.dropPinAt(x, y) },
-                                modifier = Modifier.weight(1f)
+                                onDropPinAt = { x, y -> viewModel.dropPinAt(x, y) }
                             )
-                        } else {
-                            AcousticModemScreen(
+                            1 -> TelemetryAndPinsScreen(
+                                state = meshState,
+                                onToggleBatterySaver = viewModel::toggleBatterySaver,
+                                onArmPin = viewModel::armPinCategory,
+                                onDropPinNearSelf = dropPinNearSelf,
+                                onClearPins = viewModel::clearPins,
+                                onToggleWrongKeyTest = viewModel::toggleSimulateWrongKey,
+                                onNavigateToRadarForPin = { selectedTab = 0 }
+                            )
+                            2 -> AcousticModemScreen(
                                 state = acousticState,
                                 batterySaver = meshState.batterySaverEnabled,
                                 onMessageChange = viewModel::updateAcousticMessage,
                                 onHighBandToggle = viewModel::setAcousticHighBand,
                                 onTransmitPulse = viewModel::transmitAudioPulse,
-                                onStopPulse = viewModel::stopAudioPulse,
-                                modifier = Modifier.weight(1f)
+                                onStopPulse = viewModel::stopAudioPulse
+                            )
+                            3 -> SurvivalAiScreen(
+                                aiState = aiState,
+                                history = triageHistory,
+                                batterySaverEnabled = meshState.batterySaverEnabled,
+                                onQueryAi = viewModel::querySurvivalAi,
+                                onClearSession = viewModel::clearAiSession
                             )
                         }
-                    }
-
-                    SurvivalAiScreen(
-                        aiState = aiState,
-                        history = triageHistory,
-                        batterySaverEnabled = meshState.batterySaverEnabled,
-                        onQueryAi = viewModel::querySurvivalAi,
-                        onClearSession = viewModel::clearAiSession,
-                        modifier = Modifier
-                            .weight(1.0f)
-                            .fillMaxHeight()
-                    )
-                }
-            }
-        } else {
-            BackHandler(enabled = selectedTab != 0) {
-                selectedTab = 0
-            }
-
-            Scaffold(
-                containerColor = ObsidianBg,
-                contentWindowInsets = WindowInsets.safeDrawing,
-                topBar = {
-                    TopCommandHeader(
-                        meshState = meshState,
-                        onToggleBatterySaver = viewModel::toggleBatterySaver,
-                        modifier = Modifier.windowInsetsPadding(
-                            WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
-                        )
-                    )
-                },
-                bottomBar = {
-                    NavigationBar(
-                        containerColor = GunmetalPanel,
-                        contentColor = TextPrimary,
-                        windowInsets = WindowInsets.navigationBars,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, PanelBorder)
-                    ) {
-                        HUD_TABS.forEachIndexed { index, tab ->
-                            val isSelected = selectedTab == index
-                            NavigationBarItem(
-                                selected = isSelected,
-                                onClick = { selectedTab = index },
-                                modifier = Modifier.testTag(tab.tag),
-                                icon = {
-                                    Icon(
-                                        imageVector = tab.icon,
-                                        contentDescription = stringResource(tab.labelRes)
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        text = stringResource(tab.labelRes),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = PhosphorEmerald,
-                                    selectedTextColor = PhosphorEmerald,
-                                    indicatorColor = PhosphorEmerald.copy(alpha = 0.16f),
-                                    unselectedIconColor = TextMuted,
-                                    unselectedTextColor = TextMuted
-                                )
-                            )
-                        }
-                    }
-                }
-            ) { innerPadding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                ) {
-                    when (selectedTab) {
-                        0 -> MeshRadarScreen(
-                            state = meshState,
-                            blePermissions = viewModel.getRequiredBlePermissions(),
-                            onBlePermissionsResult = viewModel::onBlePermissionsResult,
-                            onDragNode = viewModel::onNodeDrag,
-                            onTapNode = viewModel::selectNode,
-                            onToggleNodeOnline = viewModel::toggleNodeOnline,
-                            onRescanPeers = viewModel::rescanPeers,
-                            onToggleBlackout = viewModel::toggleDisasterBlackout,
-                            onBroadcastSos = viewModel::broadcastSosPacket,
-                            onSendP2pMessage = viewModel::sendP2pMessage,
-                            onUpdateRangeKm = viewModel::updateLinkRange,
-                            onArmPin = viewModel::armPinCategory,
-                            onDropPinAt = { x, y -> viewModel.dropPinAt(x, y) }
-                        )
-                        1 -> TelemetryAndPinsScreen(
-                            state = meshState,
-                            onToggleBatterySaver = viewModel::toggleBatterySaver,
-                            onArmPin = viewModel::armPinCategory,
-                            onDropPinNearSelf = dropPinNearSelf,
-                            onClearPins = viewModel::clearPins,
-                            onToggleWrongKeyTest = viewModel::toggleSimulateWrongKey,
-                            onNavigateToRadarForPin = { selectedTab = 0 }
-                        )
-                        2 -> AcousticModemScreen(
-                            state = acousticState,
-                            batterySaver = meshState.batterySaverEnabled,
-                            onMessageChange = viewModel::updateAcousticMessage,
-                            onHighBandToggle = viewModel::setAcousticHighBand,
-                            onTransmitPulse = viewModel::transmitAudioPulse,
-                            onStopPulse = viewModel::stopAudioPulse
-                        )
-                        3 -> SurvivalAiScreen(
-                            aiState = aiState,
-                            history = triageHistory,
-                            batterySaverEnabled = meshState.batterySaverEnabled,
-                            onQueryAi = viewModel::querySurvivalAi,
-                            onClearSession = viewModel::clearAiSession
-                        )
                     }
                 }
             }
@@ -334,15 +323,23 @@ private fun TopCommandHeader(
     onToggleBatterySaver: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(GunmetalPanel)
+    val headerAccent = when {
+        meshState.hypRangeEnabled -> HypRangeViolet
+        meshState.isRouteRerouted -> ElectricAmber
+        meshState.connectedPeerCount > 0 -> PhosphorEmerald
+        else -> TacticalCyan
+    }
+
+    LiquidGlassSurface(
+        modifier = modifier.fillMaxWidth(),
+        cornerRadius = 22.dp,
+        accentColor = headerAccent,
+        batterySaver = meshState.batterySaverEnabled
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -350,7 +347,7 @@ private fun TopCommandHeader(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     StatusLed(
                         color = when {
-                            meshState.activeRoute == null -> CrimsonPulse
+                            meshState.connectedPeerCount == 0 -> TacticalCyan
                             meshState.isRouteRerouted -> ElectricAmber
                             else -> PhosphorEmerald
                         },
@@ -363,12 +360,13 @@ private fun TopCommandHeader(
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
-                            .border(1.dp, TacticalCyan.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                            .background(TacticalCyan.copy(alpha = 0.1f), RoundedCornerShape(2.dp))
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                            .clip(RoundedCornerShape(50))
+                            .border(1.dp, TacticalCyan.copy(alpha = 0.48f), RoundedCornerShape(50))
+                            .background(TacticalCyan.copy(alpha = 0.14f))
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
@@ -377,17 +375,34 @@ private fun TopCommandHeader(
                                 tint = TacticalCyan,
                                 modifier = Modifier.size(10.dp)
                             )
-                            Spacer(modifier = Modifier.width(2.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = "AES128",
+                                text = "AES-128",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TacticalCyan
                             )
                         }
                     }
+                    if (meshState.hypRangeEnabled) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .border(1.dp, HypRangeViolet.copy(alpha = 0.6f), RoundedCornerShape(50))
+                                .background(HypRangeViolet.copy(alpha = 0.18f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "HYPRANGE",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = HypRangeViolet
+                            )
+                        }
+                    }
                 }
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "PEERS:${meshState.connectedPeerCount} • EFF:${meshState.meshHopEfficiencyPct}% • ${if (meshState.blackoutActive) "BLACKOUT REROUTE" else "NOMINAL"}",
+                    text = "PEERS:${meshState.connectedPeerCount} • EFF:${meshState.meshHopEfficiencyPct}% • ${if (meshState.blackoutActive) "BLACKOUT REROUTE" else "LIQUID GLASS HUD"}",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (meshState.blackoutActive) ElectricAmber else TextSecondary,
                     maxLines = 1,
@@ -400,22 +415,22 @@ private fun TopCommandHeader(
                     .minimumInteractiveComponentSize()
                     .testTag("header_battery_saver_button")
                     .clickable(onClick = onToggleBatterySaver),
-                color = if (meshState.batterySaverEnabled) ElectricAmber.copy(alpha = 0.2f) else GunmetalElevated,
-                shape = RoundedCornerShape(4.dp),
+                color = if (meshState.batterySaverEnabled) ElectricAmber.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(50),
                 border = BorderStroke(
                     1.dp,
-                    if (meshState.batterySaverEnabled) ElectricAmber else PanelBorder
+                    if (meshState.batterySaverEnabled) ElectricAmber else Color.White.copy(alpha = 0.22f)
                 )
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Default.BatterySaver,
                         contentDescription = stringResource(R.string.cd_battery_saver),
                         tint = if (meshState.batterySaverEnabled) ElectricAmber else PhosphorEmerald,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
@@ -426,12 +441,94 @@ private fun TopCommandHeader(
                 }
             }
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(PanelBorder)
-        )
+    }
+}
+
+@Composable
+private fun LiquidGlassNavigationDock(
+    selectedTab: Int,
+    onSelectTab: (Int) -> Unit,
+    batterySaver: Boolean,
+    accentColor: Color
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        LiquidGlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            cornerRadius = 28.dp,
+            accentColor = accentColor,
+            batterySaver = batterySaver
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HUD_TABS.forEachIndexed { index, tab ->
+                    val isSelected = selectedTab == index
+                    val label = stringResource(tab.labelRes)
+                    val iconColor by animateColorAsState(
+                        targetValue = if (isSelected) accentColor else TextMuted,
+                        animationSpec = spring(),
+                        label = "dock_icon_color"
+                    )
+                    val pillColor by animateColorAsState(
+                        targetValue = if (isSelected) accentColor.copy(alpha = 0.20f) else Color.Transparent,
+                        animationSpec = spring(),
+                        label = "dock_pill_color"
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .minimumInteractiveComponentSize()
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(pillColor)
+                            .then(
+                                if (isSelected) {
+                                    Modifier.border(
+                                        1.dp,
+                                        Brush.linearGradient(
+                                            listOf(
+                                                Color.White.copy(alpha = 0.35f),
+                                                accentColor.copy(alpha = 0.55f)
+                                            )
+                                        ),
+                                        RoundedCornerShape(22.dp)
+                                    )
+                                } else Modifier
+                            )
+                            .testTag(tab.tag)
+                            .clickable { onSelectTab(index) }
+                            .padding(vertical = 7.dp, horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = label,
+                            tint = iconColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) TextPrimary else TextMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -446,13 +543,13 @@ private fun CenterStageChip(
         modifier = modifier
             .minimumInteractiveComponentSize()
             .clickable(onClick = onClick),
-        color = if (selected) PhosphorEmerald.copy(alpha = 0.16f) else GunmetalPanel,
-        shape = RoundedCornerShape(4.dp),
+        color = if (selected) PhosphorEmerald.copy(alpha = 0.18f) else Color(0x88101827),
+        shape = RoundedCornerShape(50),
         border = BorderStroke(1.dp, if (selected) PhosphorEmerald else PanelBorder)
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(vertical = 8.dp)
+            modifier = Modifier.padding(vertical = 9.dp)
         ) {
             Text(
                 text = text,

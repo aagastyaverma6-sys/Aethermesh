@@ -25,11 +25,18 @@ import com.example.mesh.PinCategory
 import com.example.mesh.RouteResult
 import com.example.mesh.TacticalPin
 import com.example.mesh.TerminalLogEntry
+import com.example.transport.BleCapabilities
 import com.example.transport.BleMeshTransport
 import com.example.transport.BleRadioStatus
+import com.example.transport.BtClassicMeshTransport
+import com.example.transport.BtClassicStatus
 import com.example.transport.DiscoveredBlePeer
+import com.example.transport.DiscoveredBtClassicPeer
 import com.example.transport.DiscoveredLanPeer
+import com.example.transport.DiscoveredWifiDirectPeer
 import com.example.transport.LanMeshTransport
+import com.example.transport.WifiP2pMeshTransport
+import com.example.transport.WifiP2pStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
@@ -41,7 +48,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
-import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -51,7 +57,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private const val TAG = "AetherMeshViewModel"
-private const val PEER_STALE_MS = 12_000L
+private const val PEER_STALE_MS = 16_000L
 
 sealed interface AiTriageUiState {
     data object Idle : AiTriageUiState
@@ -96,6 +102,20 @@ data class MeshCommandUiState(
     val latestPacketInspection: EncryptedPacketInspection? = null,
     val simulateWrongKey: Boolean = false,
     val bleStatus: BleRadioStatus = BleRadioStatus.PERMISSION_REQUIRED,
+    val bleCapabilities: BleCapabilities = BleCapabilities(
+        bleSupported = true,
+        codedPhySupported = false,
+        extendedAdvSupported = false,
+        hypRangeActive = false
+    ),
+    val hypRangeEnabled: Boolean = false,
+    val btClassicEnabled: Boolean = false,
+    val btClassicStatus: BtClassicStatus = BtClassicStatus.STANDBY,
+    val wifiDirectEnabled: Boolean = false,
+    val wifiDirectStatus: WifiP2pStatus = WifiP2pStatus.STANDBY,
+    val wifiDirectGroupOwnerIp: String? = null,
+    val wifiDirectIsGroupOwner: Boolean = false,
+    val wifiDirectPeers: List<DiscoveredWifiDirectPeer> = emptyList(),
     val lanActive: Boolean = false,
     val localIpAddress: String? = null,
     val localTcpPort: Int = 0
@@ -132,6 +152,8 @@ class AetherMeshViewModel(
 
     private val lanPeers = ConcurrentHashMap<String, DiscoveredLanPeer>()
     private val blePeers = ConcurrentHashMap<String, DiscoveredBlePeer>()
+    private val btClassicPeers = ConcurrentHashMap<String, DiscoveredBtClassicPeer>()
+    private val wifiDirectPeers = ConcurrentHashMap<String, DiscoveredWifiDirectPeer>()
     private val manualOfflinePeers = ConcurrentHashMap.newKeySet<String>()
     private val customNodePositions = ConcurrentHashMap<String, Pair<Float, Float>>()
     private val seenPacketIds = LinkedHashSet<String>()
@@ -184,9 +206,10 @@ class AetherMeshViewModel(
             val isNew = !blePeers.containsKey(peer.nodeId) && !lanPeers.containsKey(peer.nodeId)
             blePeers[peer.nodeId] = peer
             if (isNew) {
+                val phyLabel = if (peer.isCodedPhy) "HYPRANGE CODED-PHY" else "BLE-1M"
                 appendLog(
-                    tag = "PEER_BLE",
-                    message = "Discovered BLE peer ${peer.deviceName} (${peer.nodeId}) RSSI=${peer.rssiDbm}dBm (~${peer.distanceMeters.roundToInt()}m)",
+                    tag = if (peer.isCodedPhy) "HYPRANGE" else "PEER_BLE",
+                    message = "Discovered $phyLabel peer ${peer.deviceName} (${peer.nodeId}) RSSI=${peer.rssiDbm}dBm (~${peer.distanceMeters.roundToInt()}m)",
                     severity = LogSeverity.SUCCESS
                 )
             }
@@ -195,8 +218,72 @@ class AetherMeshViewModel(
         onPacketReceived = { wireJson, transportLabel, senderInfo ->
             handleIncomingWirePacket(wireJson, transportLabel, senderInfo)
         },
+        onStatusChanged = { status, caps ->
+            _meshState.update {
+                it.copy(
+                    bleStatus = status,
+                    bleCapabilities = caps
+                )
+            }
+        }
+    )
+
+    private val btClassicTransport = BtClassicMeshTransport(
+        context = application,
+        scope = viewModelScope,
+        selfNodeId = selfNodeId,
+        getSelfName = { selfCallsign },
+        onPeerDiscovered = { peer ->
+            val isNew = !btClassicPeers.containsKey(peer.nodeId)
+            btClassicPeers[peer.nodeId] = peer
+            if (isNew) {
+                appendLog(
+                    tag = "BT_CLASSIC",
+                    message = "Discovered BT Classic SPP peer ${peer.deviceName} (${peer.btAddress})",
+                    severity = LogSeverity.SUCCESS
+                )
+            }
+            rebuildRealTopology("BT_CLASSIC_DISCOVERY")
+        },
+        onPacketReceived = { wireJson, transportLabel, senderInfo ->
+            handleIncomingWirePacket(wireJson, transportLabel, senderInfo)
+        },
         onStatusChanged = { status ->
-            _meshState.update { it.copy(bleStatus = status) }
+            _meshState.update { it.copy(btClassicStatus = status) }
+        }
+    )
+
+    private val wifiP2pTransport = WifiP2pMeshTransport(
+        context = application,
+        onPeersUpdated = { peers ->
+            wifiDirectPeers.clear()
+            peers.forEach { wifiDirectPeers[it.nodeId] = it }
+            _meshState.update { it.copy(wifiDirectPeers = peers) }
+            if (peers.isNotEmpty()) {
+                appendLog(
+                    tag = "WIFI_P2P",
+                    message = "Wi-Fi Direct scan: ${peers.size} device(s) nearby (${peers.joinToString { p -> p.deviceName }}).",
+                    severity = LogSeverity.INFO
+                )
+            }
+            rebuildRealTopology("WIFI_P2P_PEERS")
+        },
+        onGroupConnectionUpdated = { groupFormed, isGroupOwner, goIp ->
+            _meshState.update {
+                it.copy(
+                    wifiDirectGroupOwnerIp = goIp,
+                    wifiDirectIsGroupOwner = isGroupOwner
+                )
+            }
+            if (groupFormed) {
+                lanTransport.sendDiscoveryBurst()
+            }
+        },
+        onStatusChanged = { status ->
+            _meshState.update { it.copy(wifiDirectStatus = status) }
+        },
+        onEventLog = { tag, message, isError ->
+            appendLog(tag, message, if (isError) LogSeverity.WARNING else LogSeverity.INFO)
         }
     )
 
@@ -219,12 +306,24 @@ class AetherMeshViewModel(
 
     private fun initializeRealMesh() {
         val selfNode = MeshRouter.buildSelfNode(selfNodeId, selfCallsign)
+        val bleCaps = bleTransport.getCapabilities()
         val bootLogs = listOf(
             TerminalLogEntry(
                 id = ++logCounter,
                 timestamp = nowTs(),
                 tag = "INIT",
-                message = "Real Dual-Radio Mesh started ($selfNodeId // $selfCallsign). Zero fake nodes.",
+                message = "Multi-Radio Mesh ready ($selfNodeId // $selfCallsign). Zero fake nodes.",
+                severity = LogSeverity.INFO
+            ),
+            TerminalLogEntry(
+                id = ++logCounter,
+                timestamp = nowTs(),
+                tag = "HYPRANGE",
+                message = if (bleCaps.codedPhySupported && bleCaps.extendedAdvSupported) {
+                    "BLE 5+ Coded PHY hardware READY — toggle HypRange for extended range."
+                } else {
+                    "BLE 1M standard radio READY (Coded PHY S=8 depends on device chipset)."
+                },
                 severity = LogSeverity.INFO
             ),
             TerminalLogEntry(
@@ -233,13 +332,6 @@ class AetherMeshViewModel(
                 tag = "CRYPTO",
                 message = "AES-128-CBC tactical key active (${TacticalCrypto.KEY_FINGERPRINT}).",
                 severity = LogSeverity.SUCCESS
-            ),
-            TerminalLogEntry(
-                id = ++logCounter,
-                timestamp = nowTs(),
-                tag = "SCAN",
-                message = "Listening on LAN UDP:45872 + BLE GATT AE74 for nearby Phone/Tablet peers...",
-                severity = LogSeverity.INFO
             )
         )
 
@@ -251,7 +343,10 @@ class AetherMeshViewModel(
                 onlineNodeCount = 1,
                 meshHopEfficiencyPct = 100,
                 terminalLogs = bootLogs,
-                bleStatus = bleTransport.checkStatus()
+                bleStatus = bleTransport.checkStatus(),
+                bleCapabilities = bleCaps,
+                btClassicStatus = btClassicTransport.checkStatus(),
+                wifiDirectStatus = wifiP2pTransport.checkStatus()
             )
         }
     }
@@ -259,7 +354,7 @@ class AetherMeshViewModel(
     private fun startPeerPruner() {
         viewModelScope.launch {
             while (isActive) {
-                delay(2500)
+                delay(3000)
                 val now = System.currentTimeMillis()
                 var prunedAny = false
 
@@ -267,11 +362,7 @@ class AetherMeshViewModel(
                 while (lanIter.hasNext()) {
                     val entry = lanIter.next()
                     if (now - entry.value.lastSeenMs > PEER_STALE_MS) {
-                        appendLog(
-                            tag = "PEER_LOST",
-                            message = "Peer ${entry.value.deviceName} (${entry.key}) timed out on LAN.",
-                            severity = LogSeverity.WARNING
-                        )
+                        appendLog("PEER_LOST", "Peer ${entry.value.deviceName} (${entry.key}) timed out on LAN.", LogSeverity.WARNING)
                         lanIter.remove()
                         prunedAny = true
                     }
@@ -281,12 +372,17 @@ class AetherMeshViewModel(
                 while (bleIter.hasNext()) {
                     val entry = bleIter.next()
                     if (now - entry.value.lastSeenMs > PEER_STALE_MS) {
-                        appendLog(
-                            tag = "PEER_LOST",
-                            message = "Peer ${entry.value.deviceName} (${entry.key}) moved out of BLE range.",
-                            severity = LogSeverity.WARNING
-                        )
+                        appendLog("PEER_LOST", "Peer ${entry.value.deviceName} (${entry.key}) moved out of BLE range.", LogSeverity.WARNING)
                         bleIter.remove()
+                        prunedAny = true
+                    }
+                }
+
+                val btcIter = btClassicPeers.entries.iterator()
+                while (btcIter.hasNext()) {
+                    val entry = btcIter.next()
+                    if (now - entry.value.lastSeenMs > PEER_STALE_MS * 2) {
+                        btClassicIterRemove(btcIter, entry.value.deviceName)
                         prunedAny = true
                     }
                 }
@@ -298,27 +394,141 @@ class AetherMeshViewModel(
         }
     }
 
+    private fun btClassicIterRemove(iter: MutableIterator<MutableMap.MutableEntry<String, DiscoveredBtClassicPeer>>, name: String) {
+        appendLog("BT_LOST", "BT Classic peer $name timed out.", LogSeverity.WARNING)
+        iter.remove()
+    }
+
     fun getRequiredBlePermissions(): Array<String> = bleTransport.requiredPermissions()
 
+    fun getRequiredRadioPermissions(): Array<String> {
+        return (bleTransport.requiredPermissions().toList() +
+            btClassicTransport.requiredPermissions().toList() +
+            wifiP2pTransport.requiredPermissions().toList()).distinct().toTypedArray()
+    }
+
     fun onBlePermissionsResult() {
-        val status = bleTransport.checkStatus()
-        _meshState.update { it.copy(bleStatus = status) }
-        if (status == BleRadioStatus.ACTIVE) {
-            bleTransport.start()
-            appendLog("BLE", "Bluetooth Low Energy radio active — advertising & scanning for peers.", LogSeverity.SUCCESS)
-        } else if (status == BleRadioStatus.BLUETOOTH_DISABLED) {
-            appendLog("BLE", "Bluetooth is OFF. Enable Bluetooth to discover offline BLE peers.", LogSeverity.WARNING)
+        onRadioPermissionsResult()
+    }
+
+    fun onRadioPermissionsResult() {
+        val bleStatus = bleTransport.checkStatus()
+        val bleCaps = bleTransport.getCapabilities()
+        _meshState.update {
+            it.copy(
+                bleStatus = bleStatus,
+                bleCapabilities = bleCaps,
+                btClassicStatus = btClassicTransport.checkStatus(),
+                wifiDirectStatus = wifiP2pTransport.checkStatus()
+            )
         }
+        if (bleStatus == BleRadioStatus.ACTIVE) {
+            bleTransport.start()
+            appendLog("BLE", "BLE radio active — advertising & scanning.", LogSeverity.SUCCESS)
+        } else if (bleStatus == BleRadioStatus.BLUETOOTH_DISABLED) {
+            appendLog("BLE", "Bluetooth is OFF. Enable Bluetooth for BLE / HypRange / BT Classic.", LogSeverity.WARNING)
+        }
+        if (_meshState.value.btClassicEnabled) {
+            btClassicTransport.start()
+        }
+        if (_meshState.value.wifiDirectEnabled) {
+            wifiP2pTransport.start()
+        }
+    }
+
+    fun toggleHypRange(enabled: Boolean? = null) {
+        val next = enabled ?: !_meshState.value.hypRangeEnabled
+        val caps = bleTransport.getCapabilities()
+        bleTransport.setHypRangeEnabled(next)
+        val updatedCaps = bleTransport.getCapabilities()
+        _meshState.update {
+            it.copy(
+                hypRangeEnabled = next,
+                bleCapabilities = updatedCaps
+            )
+        }
+        if (next) {
+            val detail = if (caps.codedPhySupported && caps.extendedAdvSupported) {
+                "HypRange (BLE 5+ Coded PHY S=8) ENGAGED — long-range beacons & 1.45x link horizon active."
+            } else {
+                "HypRange requested: device hardware reports Coded PHY=${caps.codedPhySupported}; running max-sensitivity extended scan + range profile."
+            }
+            appendLog("HYPRANGE", detail, if (caps.codedPhySupported) LogSeverity.SUCCESS else LogSeverity.WARNING)
+        } else {
+            appendLog("HYPRANGE", "HypRange disabled — reverted to standard BLE 1M PHY.", LogSeverity.INFO)
+        }
+        rebuildRealTopology("HYPRANGE_MODE")
+    }
+
+    fun toggleBtClassic(enabled: Boolean? = null) {
+        val next = enabled ?: !_meshState.value.btClassicEnabled
+        _meshState.update { it.copy(btClassicEnabled = next) }
+        if (next) {
+            btClassicTransport.start()
+            appendLog("BT_CLASSIC", "Bluetooth Classic RFCOMM/SPP server active & probing nearby phones/tablets.", LogSeverity.SUCCESS)
+        } else {
+            btClassicTransport.stop()
+            btClassicPeers.clear()
+            appendLog("BT_CLASSIC", "Bluetooth Classic radio placed on standby.", LogSeverity.INFO)
+            rebuildRealTopology("BT_CLASSIC_STOP")
+        }
+    }
+
+    fun toggleWifiDirect(enabled: Boolean? = null) {
+        val next = enabled ?: !_meshState.value.wifiDirectEnabled
+        _meshState.update { it.copy(wifiDirectEnabled = next) }
+        if (next) {
+            wifiP2pTransport.start()
+        } else {
+            wifiP2pTransport.stop()
+            wifiDirectPeers.clear()
+            _meshState.update {
+                it.copy(
+                    wifiDirectPeers = emptyList(),
+                    wifiDirectGroupOwnerIp = null,
+                    wifiDirectIsGroupOwner = false
+                )
+            }
+            appendLog("WIFI_P2P", "Wi-Fi Direct radio stopped.", LogSeverity.INFO)
+            rebuildRealTopology("WIFI_P2P_STOP")
+        }
+    }
+
+    fun createWifiDirectGroup() {
+        if (!_meshState.value.wifiDirectEnabled) {
+            _meshState.update { it.copy(wifiDirectEnabled = true) }
+            wifiP2pTransport.start()
+        }
+        wifiP2pTransport.createGroup()
+    }
+
+    fun connectWifiDirectPeer(deviceAddress: String) {
+        if (!_meshState.value.wifiDirectEnabled) {
+            _meshState.update { it.copy(wifiDirectEnabled = true) }
+            wifiP2pTransport.start()
+        }
+        wifiP2pTransport.connectToPeer(deviceAddress)
     }
 
     fun rescanPeers() {
         lanTransport.sendDiscoveryBurst()
         val bleStatus = bleTransport.checkStatus()
-        _meshState.update { it.copy(bleStatus = bleStatus) }
+        _meshState.update {
+            it.copy(
+                bleStatus = bleStatus,
+                bleCapabilities = bleTransport.getCapabilities()
+            )
+        }
         if (bleStatus == BleRadioStatus.ACTIVE) {
             bleTransport.rescan()
         }
-        appendLog("SCAN", "Triggered active LAN + BLE peer discovery burst.", LogSeverity.INFO)
+        if (_meshState.value.btClassicEnabled) {
+            btClassicTransport.rescan()
+        }
+        if (_meshState.value.wifiDirectEnabled) {
+            wifiP2pTransport.discoverPeers()
+        }
+        appendLog("SCAN", "Multi-radio discovery burst dispatched (LAN / BLE-HypRange / BT Classic / Wi-Fi Direct).", LogSeverity.INFO)
     }
 
     fun updateCallsign(newName: String) {
@@ -379,7 +589,6 @@ class AetherMeshViewModel(
                 )
                 return
             }
-            // Knock out first peer when multiple exist to demonstrate adaptive rerouting
             if (peerIds.size >= 2) {
                 manualOfflinePeers.add(peerIds.first())
                 appendLog(
@@ -406,19 +615,27 @@ class AetherMeshViewModel(
 
     private fun rebuildRealTopology(reasonTag: String) {
         val selfNode = MeshRouter.buildSelfNode(selfNodeId, selfCallsign)
-        val allIds = (lanPeers.keys + blePeers.keys).distinct()
+        val allIds = (lanPeers.keys + blePeers.keys + btClassicPeers.keys + wifiDirectPeers.keys).distinct()
 
         val peerNodes = allIds.map { id ->
             val lan = lanPeers[id]
             val ble = blePeers[id]
-            val name = lan?.deviceName ?: ble?.deviceName ?: id
-            val distMeters = ble?.distanceMeters ?: 12f
+            val btc = btClassicPeers[id]
+            val wfd = wifiDirectPeers[id]
+
+            val name = lan?.deviceName ?: ble?.deviceName ?: btc?.deviceName ?: wfd?.deviceName ?: id
+            val distMeters = ble?.distanceMeters ?: btc?.distanceMeters ?: if (wfd != null) 25f else 12f
             val pos = customNodePositions[id] ?: MeshRouter.computePeerRadarPosition(id, distMeters)
-            val transportLabel = when {
-                lan != null && ble != null -> "BLE+LAN"
-                lan != null -> "LAN"
-                else -> "BLE"
+
+            val tags = buildList {
+                if (lan != null) add("LAN")
+                if (ble != null) add(if (ble.isCodedPhy) "HYPRANGE" else "BLE")
+                if (btc != null) add("BT-SPP")
+                if (wfd != null) add(if (wfd.isConnected) "WFD-LINK" else "WFD-PEER")
             }
+            val transportLabel = tags.joinToString("+").ifEmpty { "MESH" }
+            val isCoded = (ble?.isCodedPhy == true) || (_meshState.value.hypRangeEnabled && ble != null)
+
             MeshNode(
                 id = id,
                 label = name,
@@ -427,13 +644,22 @@ class AetherMeshViewModel(
                 yKm = pos.second,
                 isOnline = !manualOfflinePeers.contains(id),
                 batteryPct = 100,
-                signalDbm = ble?.rssiDbm ?: -42,
+                signalDbm = ble?.rssiDbm ?: btc?.rssiDbm ?: -42,
                 transport = transportLabel,
-                ipAddress = lan?.ipAddress,
-                tcpPort = lan?.tcpPort,
+                ipAddress = lan?.ipAddress ?: wfd?.groupOwnerAddress,
+                tcpPort = lan?.tcpPort ?: if (wfd?.isConnected == true) 45873 else null,
                 bleAddress = ble?.bleAddress,
+                isCodedPhy = isCoded,
+                btClassicAddress = btc?.btAddress,
+                wifiDirectAddress = wfd?.deviceAddress,
+                wifiDirectConnected = wfd?.isConnected == true,
                 distanceMeters = distMeters,
-                lastSeenMs = maxOf(lan?.lastSeenMs ?: 0L, ble?.lastSeenMs ?: 0L)
+                lastSeenMs = maxOf(
+                    lan?.lastSeenMs ?: 0L,
+                    ble?.lastSeenMs ?: 0L,
+                    btc?.lastSeenMs ?: 0L,
+                    wfd?.lastSeenMs ?: 0L
+                )
             )
         }
 
@@ -441,7 +667,6 @@ class AetherMeshViewModel(
         val rangeKm = _meshState.value.linkRangeKm
         val rawLinks = MeshRouter.buildLinks(allNodes, rangeKm)
 
-        // Pick farthest online peer as primary route target for shortest-path visualization
         val targetPeer = peerNodes.filter { it.isOnline }.maxByOrNull { it.distanceMeters }
         val newRoute = targetPeer?.let {
             MeshRouter.findShortestPath(allNodes, rawLinks, selfNodeId, it.id)
@@ -558,13 +783,13 @@ class AetherMeshViewModel(
         if (onlinePeers.isEmpty()) {
             appendLog(
                 tag = "TX_WARN",
-                message = "[$pktId] Encrypted locally (AES-128), but 0 peers connected. Connect Phone & Tablet via Wi-Fi/Hotspot or BLE!",
+                message = "[$pktId] Encrypted locally (AES-128), but 0 peers connected. Pair via LAN, BLE/HypRange, BT Classic, or Wi-Fi Direct!",
                 severity = LogSeverity.WARNING
             )
             return
         }
 
-        dispatchEncryptedPacketToPeers(encrypted, onlinePeers, isSos = false)
+        dispatchEncryptedPacketToPeers(encrypted, onlinePeers)
     }
 
     fun broadcastSosPacket() {
@@ -629,62 +854,69 @@ class AetherMeshViewModel(
             }
             appendLog(
                 tag = "SOS_WAIT",
-                message = "[$pktId] AES-128 SOS ready (${encrypted.cipherBytes.size}B) — 0 real peers in range. Enable BLE/Wi-Fi on 2nd device or use Acoustic FSK Modem.",
+                message = "[$pktId] AES-128 SOS ready (${encrypted.cipherBytes.size}B) — 0 real peers in range. Enable a radio or Acoustic FSK Modem.",
                 severity = LogSeverity.CRITICAL
             )
             return
         }
 
-        dispatchEncryptedPacketToPeers(encrypted, onlinePeers, isSos = true)
+        dispatchEncryptedPacketToPeers(encrypted, onlinePeers)
     }
 
     private fun dispatchEncryptedPacketToPeers(
         encrypted: EncryptedPacket,
-        peers: List<MeshNode>,
-        isSos: Boolean
+        peers: List<MeshNode>
     ) {
         val wireJson = encrypted.toWireJson(ttl = 3, visited = listOf(selfNodeId))
         appendLog(
             tag = "TX_AES",
-            message = "[${encrypted.packetId}] Sending ${encrypted.cipherBytes.size}B AES-128 packet to ${peers.size} real peer(s)...",
+            message = "[${encrypted.packetId}] Sending ${encrypted.cipherBytes.size}B AES-128 packet across active radios...",
             severity = LogSeverity.INFO
         )
 
         viewModelScope.launch {
             val startMs = System.currentTimeMillis()
             var deliveredCount = 0
+            val wfdGoIp = _meshState.value.wifiDirectGroupOwnerIp
+            val wfdIsGo = _meshState.value.wifiDirectIsGroupOwner
 
             for (peer in peers) {
                 var sent = false
                 if (peer.ipAddress != null && peer.tcpPort != null) {
                     sent = lanTransport.sendEncryptedPacket(peer.ipAddress, peer.tcpPort, wireJson)
                     if (sent) {
-                        appendLog(
-                            tag = "LAN_OK",
-                            message = "[${encrypted.packetId}] Delivered via LAN-TCP -> ${peer.label} (${peer.ipAddress})",
-                            severity = LogSeverity.SUCCESS
-                        )
+                        val tag = if (peer.wifiDirectConnected) "WFD_OK" else "LAN_OK"
+                        appendLog(tag, "[${encrypted.packetId}] Delivered via TCP -> ${peer.label} (${peer.ipAddress})", LogSeverity.SUCCESS)
+                    }
+                }
+                if (!sent && peer.wifiDirectConnected && !wfdIsGo && wfdGoIp != null) {
+                    sent = lanTransport.sendEncryptedPacket(wfdGoIp, 45873, wireJson)
+                    if (sent) {
+                        appendLog("WFD_OK", "[${encrypted.packetId}] Delivered via Wi-Fi Direct -> ${peer.label} ($wfdGoIp)", LogSeverity.SUCCESS)
                     }
                 }
                 if (!sent && peer.bleAddress != null) {
-                    sent = bleTransport.sendEncryptedPacket(peer.bleAddress, wireJson)
+                    sent = bleTransport.sendEncryptedPacket(
+                        bleAddress = peer.bleAddress,
+                        wireJson = wireJson,
+                        preferCodedPhy = _meshState.value.hypRangeEnabled || peer.isCodedPhy
+                    )
                     if (sent) {
-                        appendLog(
-                            tag = "BLE_OK",
-                            message = "[${encrypted.packetId}] Delivered via BLE-GATT -> ${peer.label} (${peer.bleAddress})",
-                            severity = LogSeverity.SUCCESS
-                        )
+                        val label = if (_meshState.value.hypRangeEnabled || peer.isCodedPhy) "HYPRANGE" else "BLE_OK"
+                        appendLog(label, "[${encrypted.packetId}] Delivered via BLE GATT -> ${peer.label} (${peer.bleAddress})", LogSeverity.SUCCESS)
+                    }
+                }
+                if (!sent && peer.btClassicAddress != null) {
+                    sent = btClassicTransport.sendEncryptedPacket(peer.btClassicAddress, wireJson)
+                    if (sent) {
+                        appendLog("BTC_OK", "[${encrypted.packetId}] Delivered via BT Classic RFCOMM -> ${peer.label}", LogSeverity.SUCCESS)
                     }
                 }
                 if (sent) {
                     deliveredCount++
                     animatePacketPulse(encrypted.packetId, listOf(selfNodeId, peer.id), isRerouted = _meshState.value.isRouteRerouted)
                 } else {
-                    appendLog(
-                        tag = "TX_ERR",
-                        message = "[${encrypted.packetId}] Failed to reach ${peer.label}. Check radio link.",
-                        severity = LogSeverity.WARNING
-                    )
+                    appendLog("TX_ERR", "[${encrypted.packetId}] No reachable socket on ${peer.label}. If Wi-Fi Direct, pair first.", LogSeverity.WARNING)
                 }
             }
 
@@ -799,7 +1031,6 @@ class AetherMeshViewModel(
             }
         }
 
-        // Multi-hop relay to other connected peers if TTL > 1
         if (parsed.ttl > 1 && selfNodeId !in parsed.visited) {
             val relayPeers = _meshState.value.nodes.filter {
                 it.role != NodeRole.SELF && it.isOnline && it.id != pkt.sourceNode && it.id !in parsed.visited
@@ -811,14 +1042,12 @@ class AetherMeshViewModel(
                         if (peer.ipAddress != null && peer.tcpPort != null) {
                             lanTransport.sendEncryptedPacket(peer.ipAddress, peer.tcpPort, nextWire)
                         } else if (peer.bleAddress != null) {
-                            bleTransport.sendEncryptedPacket(peer.bleAddress, nextWire)
+                            bleTransport.sendEncryptedPacket(peer.bleAddress, nextWire, _meshState.value.hypRangeEnabled)
+                        } else if (peer.btClassicAddress != null) {
+                            btClassicTransport.sendEncryptedPacket(peer.btClassicAddress, nextWire)
                         }
                     }
-                    appendLog(
-                        tag = "RELAY",
-                        message = "[${pkt.packetId}] Multi-hop relayed encrypted packet to ${relayPeers.size} peer(s).",
-                        severity = LogSeverity.REROUTE
-                    )
+                    appendLog("RELAY", "[${pkt.packetId}] Multi-hop relayed encrypted packet to ${relayPeers.size} peer(s).", LogSeverity.REROUTE)
                 }
             }
         }
@@ -918,7 +1147,7 @@ class AetherMeshViewModel(
         )
 
         if (onlinePeers.isNotEmpty()) {
-            dispatchEncryptedPacketToPeers(encrypted, onlinePeers, isSos = false)
+            dispatchEncryptedPacketToPeers(encrypted, onlinePeers)
         }
     }
 
@@ -956,9 +1185,9 @@ class AetherMeshViewModel(
         appendLog(
             tag = "POWER",
             message = if (next) {
-                "Battery Saver Mode ENABLED — radar sweep & HUD glow throttled."
+                "Battery Saver Mode ENABLED — liquid refraction & sweep throttled."
             } else {
-                "Battery Saver Mode DISABLED — full tactical telemetry restored."
+                "Battery Saver Mode DISABLED — full liquid glass optical pipeline restored."
             },
             severity = LogSeverity.INFO
         )
@@ -972,17 +1201,9 @@ class AetherMeshViewModel(
         val msg = acousticState.value.message.trim()
         if (msg.isEmpty()) return
         val modeLabel = if (acousticState.value.isHighBandUltrasonic) "6.8/8.2 kHz" else "1.2/2.2 kHz"
-        appendLog(
-            tag = "ACOUSTIC",
-            message = "Modulating FSK audio pulse ($modeLabel): \"$msg\"",
-            severity = LogSeverity.WARNING
-        )
+        appendLog("ACOUSTIC", "Modulating FSK audio pulse ($modeLabel): \"$msg\"", LogSeverity.WARNING)
         acousticModem.transmitPulse {
-            appendLog(
-                tag = "ACOUSTIC",
-                message = "Acoustic FSK burst complete.",
-                severity = LogSeverity.SUCCESS
-            )
+            appendLog("ACOUSTIC", "Acoustic FSK burst complete.", LogSeverity.SUCCESS)
         }
     }
 
@@ -1068,6 +1289,8 @@ class AetherMeshViewModel(
         super.onCleared()
         lanTransport.stop()
         bleTransport.stop()
+        btClassicTransport.stop()
+        wifiP2pTransport.stop()
         acousticModem.stop()
         pulseJob?.cancel()
         aiJob?.cancel()

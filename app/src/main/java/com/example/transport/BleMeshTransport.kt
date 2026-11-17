@@ -14,6 +14,9 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.AdvertisingSet
+import android.bluetooth.le.AdvertisingSetCallback
+import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
@@ -25,6 +28,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.example.mesh.MeshRouter
 import kotlinx.coroutines.CompletableDeferred
@@ -45,6 +49,7 @@ data class DiscoveredBlePeer(
     val bleAddress: String,
     val rssiDbm: Int,
     val distanceMeters: Float,
+    val isCodedPhy: Boolean,
     val lastSeenMs: Long
 )
 
@@ -55,13 +60,20 @@ enum class BleRadioStatus {
     ACTIVE
 }
 
+data class BleCapabilities(
+    val bleSupported: Boolean,
+    val codedPhySupported: Boolean,
+    val extendedAdvSupported: Boolean,
+    val hypRangeActive: Boolean
+)
+
 class BleMeshTransport(
     private val context: Context,
     private val selfNodeId: String,
     private val getSelfName: () -> String,
     private val onPeerDiscovered: (DiscoveredBlePeer) -> Unit,
     private val onPacketReceived: (wireJson: String, transportLabel: String, senderInfo: String) -> Unit,
-    private val onStatusChanged: (BleRadioStatus) -> Unit
+    private val onStatusChanged: (BleRadioStatus, BleCapabilities) -> Unit
 ) {
     private val bluetoothManager: BluetoothManager? =
         context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -71,6 +83,8 @@ class BleMeshTransport(
     private var advertiser: BluetoothLeAdvertiser? = null
     private var gattServer: BluetoothGattServer? = null
     private var isRunning = false
+    private var hypRangeEnabled = false
+    private var codedAdvController: CodedPhyAdvertisingHelper? = null
 
     private val incomingChunkBuffers = ConcurrentHashMap<String, StringBuilder>()
 
@@ -92,6 +106,27 @@ class BleMeshTransport(
         }
     }
 
+    fun getCapabilities(): BleCapabilities {
+        val hasBleFeature = context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
+        val btAdapter = adapter
+        val codedSupported = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && btAdapter != null) {
+            runCatching { btAdapter.isLeCodedPhySupported }.getOrDefault(false)
+        } else {
+            false
+        }
+        val extAdvSupported = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && btAdapter != null) {
+            runCatching { btAdapter.isLeExtendedAdvertisingSupported }.getOrDefault(false)
+        } else {
+            false
+        }
+        return BleCapabilities(
+            bleSupported = hasBleFeature && btAdapter != null,
+            codedPhySupported = codedSupported,
+            extendedAdvSupported = extAdvSupported,
+            hypRangeActive = hypRangeEnabled && codedSupported && extAdvSupported && isRunning
+        )
+    }
+
     fun checkStatus(): BleRadioStatus {
         val hasBleFeature = context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)
         val btAdapter = adapter
@@ -101,10 +136,20 @@ class BleMeshTransport(
         return BleRadioStatus.ACTIVE
     }
 
+    fun setHypRangeEnabled(enabled: Boolean) {
+        if (hypRangeEnabled == enabled) return
+        hypRangeEnabled = enabled
+        if (isRunning) {
+            rescan()
+        } else {
+            onStatusChanged(checkStatus(), getCapabilities())
+        }
+    }
+
     @SuppressLint("MissingPermission")
     fun start() {
         val status = checkStatus()
-        onStatusChanged(status)
+        onStatusChanged(status, getCapabilities())
         if (status != BleRadioStatus.ACTIVE) {
             return
         }
@@ -131,43 +176,65 @@ class BleMeshTransport(
             Log.e(TAG, "Failed to open BLE GATT server", e)
         }
 
-        // 2. Start BLE Advertising with AETHER_BLE_SERVICE_UUID + compact NodeID payload
-        try {
-            advertiser = btAdapter.bluetoothLeAdvertiser
-            val settings = AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-                .setConnectable(true)
-                .build()
+        // 2. Start BLE Advertising (HypRange BLE 5+ Coded PHY S=8 when requested & supported, else BLE 1M)
+        advertiser = btAdapter.bluetoothLeAdvertiser
+        val caps = getCapabilities()
+        val payloadTag = "${selfNodeId.take(8)}|${getSelfName().take(12)}".toByteArray(Charsets.UTF_8)
+        var startedExtended = false
 
-            val advData = AdvertiseData.Builder()
-                .addServiceUuid(ParcelUuid(AETHER_BLE_SERVICE_UUID))
-                .setIncludeDeviceName(false)
-                .build()
-
-            val payloadTag = "${selfNodeId.take(8)}|${getSelfName().take(12)}".toByteArray(Charsets.UTF_8)
-            val scanResponse = AdvertiseData.Builder()
-                .addServiceData(ParcelUuid(AETHER_BLE_SERVICE_UUID), payloadTag)
-                .build()
-
-            advertiser?.startAdvertising(settings, advData, scanResponse, advertiseCallback)
-        } catch (e: Exception) {
-            Log.w(TAG, "BLE Advertising failed to start", e)
+        if (hypRangeEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && caps.codedPhySupported && caps.extendedAdvSupported) {
+            val adv = advertiser
+            if (adv != null) {
+                val helper = CodedPhyAdvertisingHelper(selfNodeId)
+                startedExtended = helper.startCodedAdvertising(adv, payloadTag)
+                if (startedExtended) {
+                    codedAdvController = helper
+                }
+            }
         }
 
-        // 3. Start BLE Scanner filtered to Aether-Mesh peers
+        if (!startedExtended) {
+            try {
+                val settings = AdvertiseSettings.Builder()
+                    .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+                    .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+                    .setConnectable(true)
+                    .build()
+
+                val advData = AdvertiseData.Builder()
+                    .addServiceUuid(ParcelUuid(AETHER_BLE_SERVICE_UUID))
+                    .setIncludeDeviceName(false)
+                    .build()
+
+                val scanResponse = AdvertiseData.Builder()
+                    .addServiceData(ParcelUuid(AETHER_BLE_SERVICE_UUID), payloadTag)
+                    .build()
+
+                advertiser?.startAdvertising(settings, advData, scanResponse, advertiseCallback)
+            } catch (e: Exception) {
+                Log.w(TAG, "Legacy BLE Advertising failed to start", e)
+            }
+        }
+
+        // 3. Start BLE Scanner (supports Coded PHY + 1M beacons simultaneously on API 26+)
         try {
             scanner = btAdapter.bluetoothLeScanner
             val filter = ScanFilter.Builder()
                 .setServiceUuid(ParcelUuid(AETHER_BLE_SERVICE_UUID))
                 .build()
-            val scanSettings = ScanSettings.Builder()
+            val scanSettingsBuilder = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .build()
-            scanner?.startScan(listOf(filter), scanSettings, scanCallback)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && (hypRangeEnabled || caps.codedPhySupported)) {
+                scanSettingsBuilder
+                    .setLegacy(false)
+                    .setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED)
+            }
+            scanner?.startScan(listOf(filter), scanSettingsBuilder.build(), scanCallback)
         } catch (e: Exception) {
             Log.w(TAG, "BLE Scanner failed to start", e)
         }
+
+        onStatusChanged(checkStatus(), getCapabilities())
     }
 
     @SuppressLint("MissingPermission")
@@ -183,21 +250,25 @@ class BleMeshTransport(
             if (hasRequiredPermissions()) {
                 scanner?.stopScan(scanCallback)
                 advertiser?.stopAdvertising(advertiseCallback)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    advertiser?.let { codedAdvController?.stopCodedAdvertising(it) }
+                }
                 gattServer?.close()
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error stopping BLE transport", e)
         }
+        codedAdvController = null
         scanner = null
         advertiser = null
         gattServer = null
         incomingChunkBuffers.clear()
-        onStatusChanged(checkStatus())
+        onStatusChanged(checkStatus(), getCapabilities())
     }
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            Log.d(TAG, "BLE Advertising active for $selfNodeId")
+            Log.d(TAG, "BLE 1M Advertising active for $selfNodeId")
         }
 
         override fun onStartFailure(errorCode: Int) {
@@ -219,7 +290,17 @@ class BleMeshTransport(
                 ?: (try { device.name } catch (_: Exception) { null })
                 ?: nodeId
 
-            val distMeters = MeshRouter.estimateDistanceMetersFromRssi(result.rssi)
+            val isCodedPhy = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                result.primaryPhy == BluetoothDevice.PHY_LE_CODED ||
+                    result.secondaryPhy == BluetoothDevice.PHY_LE_CODED
+            } else {
+                false
+            }
+
+            val distMeters = MeshRouter.estimateDistanceMetersFromRssi(
+                rssiDbm = result.rssi,
+                isCodedPhy = isCodedPhy
+            )
             onPeerDiscovered(
                 DiscoveredBlePeer(
                     nodeId = nodeId,
@@ -227,6 +308,7 @@ class BleMeshTransport(
                     bleAddress = device.address,
                     rssiDbm = result.rssi,
                     distanceMeters = distMeters,
+                    isCodedPhy = isCodedPhy,
                     lastSeenMs = System.currentTimeMillis()
                 )
             )
@@ -261,7 +343,8 @@ class BleMeshTransport(
                     buf.clear()
                     buf.append(remainder)
                     if (frame.isNotEmpty()) {
-                        onPacketReceived(frame, "BLE-GATT", device.address)
+                        val label = if (hypRangeEnabled) "HYPRANGE-GATT" else "BLE-GATT"
+                        onPacketReceived(frame, label, device.address)
                     }
                 } else if (buf.length > 8192) {
                     buf.clear()
@@ -279,7 +362,8 @@ class BleMeshTransport(
     @SuppressLint("MissingPermission")
     suspend fun sendEncryptedPacket(
         bleAddress: String,
-        wireJson: String
+        wireJson: String,
+        preferCodedPhy: Boolean = hypRangeEnabled
     ): Boolean = withContext(Dispatchers.IO) {
         if (checkStatus() != BleRadioStatus.ACTIVE) return@withContext false
         val device = try {
@@ -368,8 +452,18 @@ class BleMeshTransport(
         }
 
         try {
-            activeGatt = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
-            val result = withTimeoutOrNull(8000L) { completion.await() } ?: false
+            activeGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && preferCodedPhy && getCapabilities().codedPhySupported) {
+                device.connectGatt(
+                    context,
+                    false,
+                    callback,
+                    BluetoothDevice.TRANSPORT_LE,
+                    BluetoothDevice.PHY_LE_CODED_MASK
+                )
+            } else {
+                device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+            }
+            val result = withTimeoutOrNull(8500L) { completion.await() } ?: false
             result
         } catch (e: Exception) {
             Log.w(TAG, "BLE GATT send to $bleAddress failed", e)
@@ -380,6 +474,72 @@ class BleMeshTransport(
                 activeGatt?.close()
             } catch (_: Exception) {
             }
+        }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+private class CodedPhyAdvertisingHelper(
+    private val selfNodeId: String
+) {
+    private val callback = object : AdvertisingSetCallback() {
+        override fun onAdvertisingSetStarted(
+            advertisingSet: AdvertisingSet?,
+            txPower: Int,
+            status: Int
+        ) {
+            Log.d(TAG, "HypRange Coded PHY AdvertisingSet status=$status txPower=$txPower node=$selfNodeId")
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun startCodedAdvertising(
+        advertiser: BluetoothLeAdvertiser,
+        payloadTag: ByteArray
+    ): Boolean {
+        val advData = AdvertiseData.Builder()
+            .addServiceUuid(ParcelUuid(AETHER_BLE_SERVICE_UUID))
+            .addServiceData(ParcelUuid(AETHER_BLE_SERVICE_UUID), payloadTag)
+            .setIncludeDeviceName(false)
+            .build()
+
+        // Try full Coded PHY primary + secondary first for maximum HypRange
+        return try {
+            val params = AdvertisingSetParameters.Builder()
+                .setLegacyMode(false)
+                .setConnectable(true)
+                .setInterval(AdvertisingSetParameters.INTERVAL_LOW)
+                .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
+                .setPrimaryPhy(BluetoothDevice.PHY_LE_CODED)
+                .setSecondaryPhy(BluetoothDevice.PHY_LE_CODED)
+                .build()
+            advertiser.startAdvertisingSet(params, advData, null, null, null, callback)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Primary Coded PHY rejected, trying 1M primary + Coded secondary", e)
+            try {
+                val fallbackParams = AdvertisingSetParameters.Builder()
+                    .setLegacyMode(false)
+                    .setConnectable(true)
+                    .setInterval(AdvertisingSetParameters.INTERVAL_LOW)
+                    .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
+                    .setPrimaryPhy(BluetoothDevice.PHY_LE_1M)
+                    .setSecondaryPhy(BluetoothDevice.PHY_LE_CODED)
+                    .build()
+                advertiser.startAdvertisingSet(fallbackParams, advData, null, null, null, callback)
+                true
+            } catch (e2: Exception) {
+                Log.w(TAG, "Extended Coded PHY advertising unsupported, falling back to legacy BLE", e2)
+                false
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun stopCodedAdvertising(advertiser: BluetoothLeAdvertiser) {
+        try {
+            advertiser.stopAdvertisingSet(callback)
+        } catch (_: Exception) {
         }
     }
 }

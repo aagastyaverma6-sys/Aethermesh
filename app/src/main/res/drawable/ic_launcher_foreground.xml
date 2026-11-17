@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/aether_mesh_icon_1794923925543"
+        android:drawable="@drawable/aether_cupertino_icon_1794935032565"
         android:gravity="center" />
 </layer-list>

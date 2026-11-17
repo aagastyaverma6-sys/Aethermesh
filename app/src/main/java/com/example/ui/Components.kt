@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,8 +35,6 @@ import androidx.compose.ui.unit.dp
 import com.example.mesh.MeshEfficiencySample
 import com.example.ui.theme.CrimsonPulse
 import com.example.ui.theme.ElectricAmber
-import com.example.ui.theme.GunmetalElevated
-import com.example.ui.theme.GunmetalPanel
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.PanelBorder
 import com.example.ui.theme.PhosphorEmerald
@@ -54,19 +52,27 @@ fun TacticalPanel(
     headerAction: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val contentAlpha = if (batterySaver) 0.86f else 1f
-    Surface(
+    val contentAlpha = if (batterySaver) 0.88f else 1f
+    LiquidGlassSurface(
         modifier = modifier.alpha(contentAlpha),
-        color = GunmetalPanel,
-        shape = RoundedCornerShape(6.dp),
-        border = BorderStroke(1.dp, PanelBorder)
+        cornerRadius = 20.dp,
+        accentColor = statusColor,
+        batterySaver = batterySaver
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(GunmetalElevated)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                statusColor.copy(alpha = 0.08f),
+                                Color.White.copy(alpha = 0.04f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -87,10 +93,10 @@ fun TacticalPanel(
                         Spacer(modifier = Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(3.dp))
+                                .clip(RoundedCornerShape(50))
                                 .background(statusColor.copy(alpha = 0.16f))
-                                .border(1.dp, statusColor.copy(alpha = 0.5f), RoundedCornerShape(3.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .border(1.dp, statusColor.copy(alpha = 0.48f), RoundedCornerShape(50))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
                                 text = badgeText,
@@ -109,12 +115,20 @@ fun TacticalPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(PanelBorder)
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.16f),
+                                statusColor.copy(alpha = 0.25f),
+                                Color.White.copy(alpha = 0.05f)
+                            )
+                        )
+                    )
             )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp),
+                    .padding(14.dp),
                 content = content
             )
         }
@@ -129,10 +143,18 @@ fun StatusLed(
 ) {
     Box(
         modifier = modifier
-            .size(8.dp)
+            .size(10.dp)
             .clip(CircleShape)
-            .background(if (dimmed) color.copy(alpha = 0.55f) else color)
-    )
+            .background(if (dimmed) color.copy(alpha = 0.35f) else color.copy(alpha = 0.28f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(if (dimmed) color.copy(alpha = 0.6f) else color)
+        )
+    }
 }
 
 @Composable
@@ -145,10 +167,28 @@ fun MetricTile(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(GunmetalElevated)
-            .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-            .padding(10.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        accentColor.copy(alpha = 0.10f),
+                        Color(0x880B121E)
+                    )
+                )
+            )
+            .border(
+                BorderStroke(
+                    1.dp,
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.22f),
+                            accentColor.copy(alpha = 0.25f)
+                        )
+                    )
+                ),
+                RoundedCornerShape(14.dp)
+            )
+            .padding(12.dp)
     ) {
         Text(
             text = label,
@@ -185,11 +225,11 @@ fun EfficiencySparkline(
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(44.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color(0xFF06080C))
-            .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-            .padding(horizontal = 6.dp, vertical = 6.dp)
+            .height(46.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0x99060910))
+            .border(1.dp, PanelBorder, RoundedCornerShape(12.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         if (samples.isEmpty()) return@Canvas
         val slots = 12
@@ -213,7 +253,7 @@ fun EfficiencySparkline(
                 color = color,
                 topLeft = Offset(left, top),
                 size = Size(barWidth, barHeight),
-                cornerRadius = CornerRadius(2f, 2f)
+                cornerRadius = CornerRadius(4f, 4f)
             )
         }
     }

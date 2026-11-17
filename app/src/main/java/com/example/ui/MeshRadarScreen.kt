@@ -38,6 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
@@ -46,10 +47,12 @@ import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -78,6 +81,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -100,10 +104,11 @@ import com.example.mesh.P2pCommsMessage
 import com.example.mesh.PinCategory
 import com.example.mesh.TerminalLogEntry
 import com.example.transport.BleRadioStatus
+import com.example.transport.BtClassicStatus
+import com.example.transport.WifiP2pStatus
 import com.example.ui.theme.CrimsonPulse
 import com.example.ui.theme.ElectricAmber
-import com.example.ui.theme.GunmetalElevated
-import com.example.ui.theme.GunmetalPanel
+import com.example.ui.theme.HypRangeViolet
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.ObsidianBg
 import com.example.ui.theme.PanelBorder
@@ -120,8 +125,13 @@ import kotlin.math.roundToInt
 @Composable
 fun MeshRadarScreen(
     state: MeshCommandUiState,
-    blePermissions: Array<String>,
-    onBlePermissionsResult: () -> Unit,
+    radioPermissions: Array<String>,
+    onRadioPermissionsResult: () -> Unit,
+    onToggleHypRange: () -> Unit,
+    onToggleBtClassic: () -> Unit,
+    onToggleWifiDirect: () -> Unit,
+    onCreateWifiDirectGroup: () -> Unit,
+    onConnectWifiDirectPeer: (String) -> Unit,
     onDragNode: (String, Float, Float) -> Unit,
     onTapNode: (String?) -> Unit,
     onToggleNodeOnline: (String) -> Unit,
@@ -137,99 +147,241 @@ fun MeshRadarScreen(
 ) {
     var messageDraft by rememberSaveable { mutableStateOf("") }
 
-    val blePermissionLauncher = rememberLauncherForActivityResult(
+    val radioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        onBlePermissionsResult()
+        onRadioPermissionsResult()
     }
 
     val columnModifier = if (scrollable) {
         modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(12.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     } else {
         modifier
             .fillMaxSize()
-            .padding(12.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     }
 
     Column(
         modifier = columnModifier,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Real Radio Status Strip (LAN Wi-Fi/Hotspot + BLE)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(GunmetalElevated)
-                .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+        // Multi-Radio Tactical Transceiver Matrix (LAN, BLE + HypRange Coded PHY, BT Classic, Wi-Fi Direct)
+        TacticalPanel(
+            title = "MULTI-RADIO TRANSCEIVER MATRIX",
+            statusColor = when {
+                state.hypRangeEnabled -> HypRangeViolet
+                state.wifiDirectStatus == WifiP2pStatus.CONNECTED_GROUP_OWNER ||
+                    state.wifiDirectStatus == WifiP2pStatus.CONNECTED_CLIENT -> PhosphorEmerald
+                else -> TacticalCyan
+            },
+            badgeText = buildString {
+                if (state.hypRangeEnabled) append("HYPRANGE")
+                else if (state.bleStatus == BleRadioStatus.ACTIVE) append("BLE 1M")
+                else append("LAN")
+            },
+            batterySaver = state.batterySaverEnabled,
+            headerAction = if (
+                state.bleStatus == BleRadioStatus.PERMISSION_REQUIRED ||
+                state.wifiDirectStatus == WifiP2pStatus.PERMISSION_REQUIRED
             ) {
-                Icon(
-                    imageVector = Icons.Default.Wifi,
-                    contentDescription = "LAN mesh status",
-                    tint = if (state.localIpAddress != null) PhosphorEmerald else TextMuted,
-                    modifier = Modifier.size(15.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (state.localIpAddress != null) {
-                        "LAN ${state.localIpAddress}:${state.localTcpPort}"
-                    } else {
-                        "LAN: NO WI-FI/HOTSPOT"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (state.localIpAddress != null) PhosphorEmerald else TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            val bleColor = when (state.bleStatus) {
-                BleRadioStatus.ACTIVE -> TacticalCyan
-                BleRadioStatus.PERMISSION_REQUIRED -> ElectricAmber
-                BleRadioStatus.BLUETOOTH_DISABLED -> CrimsonPulse
-                BleRadioStatus.UNSUPPORTED -> TextMuted
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(3.dp))
-                    .border(1.dp, bleColor.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
-                    .background(bleColor.copy(alpha = 0.14f))
-                    .clickable(enabled = state.bleStatus == BleRadioStatus.PERMISSION_REQUIRED) {
-                        blePermissionLauncher.launch(blePermissions)
+                {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(ElectricAmber.copy(alpha = 0.2f))
+                            .border(1.dp, ElectricAmber, RoundedCornerShape(50))
+                            .clickable { radioPermissionLauncher.launch(radioPermissions) }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .testTag("grant_radios_pill")
+                    ) {
+                        Text(
+                            text = "GRANT RADIOS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ElectricAmber
+                        )
                     }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                    .testTag("ble_status_pill")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Bluetooth,
-                    contentDescription = "Bluetooth Low Energy status",
-                    tint = bleColor,
-                    modifier = Modifier.size(13.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = when (state.bleStatus) {
-                        BleRadioStatus.ACTIVE -> "BLE: ON"
-                        BleRadioStatus.PERMISSION_REQUIRED -> "GRANT BLE"
-                        BleRadioStatus.BLUETOOTH_DISABLED -> "BT OFF"
-                        BleRadioStatus.UNSUPPORTED -> "NO BLE"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = bleColor
-                )
+                }
+            } else null
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    RadioModeTile(
+                        title = "LAN / HOTSPOT",
+                        subtitle = if (state.localIpAddress != null) {
+                            "${state.localIpAddress}:${state.localTcpPort}"
+                        } else {
+                            "No Wi-Fi LAN"
+                        },
+                        statusBadge = if (state.lanActive && state.localIpAddress != null) "ACTIVE" else "LISTEN",
+                        icon = Icons.Default.Wifi,
+                        active = state.localIpAddress != null,
+                        accentColor = PhosphorEmerald,
+                        onClick = onRescanPeers,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("radio_tile_lan")
+                    )
+
+                    val hypActive = state.hypRangeEnabled
+                    val codedHw = state.bleCapabilities.codedPhySupported
+                    RadioModeTile(
+                        title = "HYPRANGE BLE 5+",
+                        subtitle = when {
+                            state.bleStatus == BleRadioStatus.PERMISSION_REQUIRED -> "Tap to grant BLE"
+                            state.bleStatus == BleRadioStatus.BLUETOOTH_DISABLED -> "Bluetooth OFF"
+                            hypActive && codedHw -> "Coded PHY S=8"
+                            hypActive -> "Max Sensitivity"
+                            codedHw -> "Coded PHY Ready"
+                            else -> "BLE 1M Active"
+                        },
+                        statusBadge = if (hypActive) "HYPRANGE" else "BLE 1M",
+                        icon = Icons.Default.Sensors,
+                        active = hypActive,
+                        accentColor = HypRangeViolet,
+                        onClick = {
+                            if (state.bleStatus == BleRadioStatus.PERMISSION_REQUIRED) {
+                                radioPermissionLauncher.launch(radioPermissions)
+                            } else {
+                                onToggleHypRange()
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("radio_tile_hyprange")
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val btcActive = state.btClassicEnabled && state.btClassicStatus == BtClassicStatus.ACTIVE
+                    RadioModeTile(
+                        title = "BT CLASSIC",
+                        subtitle = when (state.btClassicStatus) {
+                            BtClassicStatus.ACTIVE -> "RFCOMM SPP Ready"
+                            BtClassicStatus.PERMISSION_REQUIRED -> "Permission Needed"
+                            BtClassicStatus.BLUETOOTH_DISABLED -> "Bluetooth OFF"
+                            BtClassicStatus.UNSUPPORTED -> "Unsupported"
+                            BtClassicStatus.STANDBY -> "Tap to Enable"
+                        },
+                        statusBadge = if (btcActive) "SPP ON" else "OFF",
+                        icon = Icons.Default.BluetoothConnected,
+                        active = btcActive,
+                        accentColor = TacticalCyan,
+                        onClick = {
+                            if (state.btClassicStatus == BtClassicStatus.PERMISSION_REQUIRED) {
+                                radioPermissionLauncher.launch(radioPermissions)
+                            } else {
+                                onToggleBtClassic()
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("radio_tile_bt_classic")
+                    )
+
+                    val wfdActive = state.wifiDirectEnabled && (
+                        state.wifiDirectStatus == WifiP2pStatus.DISCOVERING ||
+                            state.wifiDirectStatus == WifiP2pStatus.CONNECTED_GROUP_OWNER ||
+                            state.wifiDirectStatus == WifiP2pStatus.CONNECTED_CLIENT
+                        )
+                    RadioModeTile(
+                        title = "WI-FI DIRECT",
+                        subtitle = when (state.wifiDirectStatus) {
+                            WifiP2pStatus.CONNECTED_GROUP_OWNER -> "Group Owner Ready"
+                            WifiP2pStatus.CONNECTED_CLIENT -> "Linked ${state.wifiDirectGroupOwnerIp ?: "P2P"}"
+                            WifiP2pStatus.DISCOVERING -> "${state.wifiDirectPeers.size} P2P Peer(s)"
+                            WifiP2pStatus.PERMISSION_REQUIRED -> "Tap to Grant"
+                            WifiP2pStatus.WIFI_DISABLED -> "Enable Wi-Fi"
+                            WifiP2pStatus.UNSUPPORTED -> "Unsupported"
+                            WifiP2pStatus.STANDBY -> "Zero-Router P2P"
+                        },
+                        statusBadge = when (state.wifiDirectStatus) {
+                            WifiP2pStatus.CONNECTED_GROUP_OWNER, WifiP2pStatus.CONNECTED_CLIENT -> "LINKED"
+                            WifiP2pStatus.DISCOVERING -> "SCAN"
+                            else -> "OFF"
+                        },
+                        icon = Icons.Default.WifiTethering,
+                        active = wfdActive,
+                        accentColor = ElectricAmber,
+                        onClick = {
+                            if (state.wifiDirectStatus == WifiP2pStatus.PERMISSION_REQUIRED) {
+                                radioPermissionLauncher.launch(radioPermissions)
+                            } else {
+                                onToggleWifiDirect()
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("radio_tile_wifi_direct")
+                    )
+                }
+
+                // Wi-Fi Direct Quick Group / Peer Pairing Strip when Wi-Fi Direct is active
+                if (state.wifiDirectEnabled) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(ElectricAmber.copy(alpha = 0.08f))
+                            .border(1.dp, ElectricAmber.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (state.wifiDirectPeers.isEmpty()) {
+                                    "WI-FI DIRECT: SCANNING NEARBY DEVICES..."
+                                } else {
+                                    "WI-FI DIRECT PEERS: ${state.wifiDirectPeers.size} FOUND"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ElectricAmber
+                            )
+                            Text(
+                                text = state.wifiDirectPeers.firstOrNull()?.let {
+                                    "Tap Connect on ${it.deviceName} or Host Group"
+                                } ?: "Enable Wi-Fi Direct on 2nd device or tap Host Group",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        val firstPeer = state.wifiDirectPeers.firstOrNull { !it.isConnected }
+                        Surface(
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .clickable {
+                                    if (firstPeer != null) {
+                                        onConnectWifiDirectPeer(firstPeer.deviceAddress)
+                                    } else {
+                                        onCreateWifiDirectGroup()
+                                    }
+                                },
+                            color = ElectricAmber.copy(alpha = 0.22f),
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(1.dp, ElectricAmber)
+                        ) {
+                            Text(
+                                text = if (firstPeer != null) "CONNECT" else "HOST GROUP",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ElectricAmber,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -237,37 +389,42 @@ fun MeshRadarScreen(
         if (state.rerouteAlertBanner != null) {
             val isNoRoute = state.activeRoute == null
             val bannerColor = if (isNoRoute) CrimsonPulse else ElectricAmber
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(bannerColor.copy(alpha = 0.14f))
-                    .border(1.dp, bannerColor, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
+            LiquidGlassSurface(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 14.dp,
+                accentColor = bannerColor,
+                batterySaver = state.batterySaverEnabled
             ) {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = bannerColor,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = state.rerouteAlertBanner,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = bannerColor,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = bannerColor,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = state.rerouteAlertBanner,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = bannerColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
-        // Main Interactive Radar Panel (Real Devices Only — Zero Fake Nodes)
+        // Main Interactive Liquid Glass Radar Panel (Real Devices Only — Zero Fake Nodes)
         TacticalPanel(
             title = "REAL P2P RADAR // ${state.selfCallsign.uppercase()}",
             statusColor = when {
-                state.connectedPeerCount == 0 -> ElectricAmber
+                state.hypRangeEnabled -> HypRangeViolet
+                state.connectedPeerCount == 0 -> TacticalCyan
                 state.isRouteRerouted -> ElectricAmber
                 else -> PhosphorEmerald
             },
@@ -295,12 +452,12 @@ fun MeshRadarScreen(
                             .minimumInteractiveComponentSize()
                             .testTag("radar_arm_pin_${cat.name.lowercase()}")
                             .clickable { onArmPin(cat) },
-                        color = if (armed) color.copy(alpha = 0.22f) else GunmetalElevated,
-                        shape = RoundedCornerShape(4.dp),
+                        color = if (armed) color.copy(alpha = 0.24f) else Color(0x880B1220),
+                        shape = RoundedCornerShape(50),
                         border = BorderStroke(1.dp, if (armed) color else PanelBorder)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -309,7 +466,7 @@ fun MeshRadarScreen(
                                 tint = color,
                                 modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
                                 text = if (armed) "TAP MAP" else cat.shortCode,
                                 style = MaterialTheme.typography.labelSmall,
@@ -320,20 +477,33 @@ fun MeshRadarScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Interactive Canvas
+            // Interactive Liquid Glass Optical Radar Canvas
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
                     .heightIn(max = 390.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(ObsidianBg)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xE6091220),
+                                Color(0xF2050810)
+                            )
+                        )
+                    )
                     .border(
-                        1.dp,
-                        if (state.armedPinCategory != null) ElectricAmber else PanelBorder,
-                        RoundedCornerShape(6.dp)
+                        width = 1.2.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.30f),
+                                if (state.armedPinCategory != null) ElectricAmber else PhosphorEmerald.copy(alpha = 0.38f),
+                                Color.White.copy(alpha = 0.08f)
+                            )
+                        ),
+                        shape = RoundedCornerShape(22.dp)
                     )
             ) {
                 TacticalRadarCanvas(
@@ -344,71 +514,92 @@ fun MeshRadarScreen(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                Text(
-                    text = "ID: ${state.selfNodeId}\nREAL RADIO RADAR",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted,
+                // Floating Cupertino Glass Pill (Top-Left)
+                LiquidGlassSurface(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(8.dp)
-                )
-
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(GunmetalPanel.copy(alpha = 0.85f))
-                        .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalAlignment = Alignment.End
+                        .padding(10.dp),
+                    cornerRadius = 12.dp,
+                    accentColor = if (state.hypRangeEnabled) HypRangeViolet else TacticalCyan,
+                    batterySaver = state.batterySaverEnabled
                 ) {
                     Text(
-                        text = "EFF: ${state.meshHopEfficiencyPct}%",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = when {
-                            state.meshHopEfficiencyPct == 0 -> CrimsonPulse
-                            state.isRouteRerouted -> ElectricAmber
-                            else -> PhosphorEmerald
-                        }
-                    )
-                    Text(
-                        text = if (state.activeRoute != null) {
-                            "${state.activeRoute.hopCount} HOPS // ${state.activeRoute.totalLatencyMs}ms"
-                        } else {
-                            "${state.connectedPeerCount} PEERS ONLINE"
-                        },
+                        text = "${state.selfNodeId}\n${if (state.hypRangeEnabled) "HYPRANGE" else "REAL RADAR"}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                     )
                 }
 
-                // Honest empty-peer guidance banner when no other real device is nearby
-                if (state.nodes.size <= 1) {
+                // Floating Cupertino Glass Telemetry Pill (Top-End)
+                LiquidGlassSurface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(10.dp),
+                    cornerRadius = 12.dp,
+                    accentColor = when {
+                        state.meshHopEfficiencyPct == 0 -> CrimsonPulse
+                        state.isRouteRerouted -> ElectricAmber
+                        else -> PhosphorEmerald
+                    },
+                    batterySaver = state.batterySaverEnabled
+                ) {
                     Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = "EFF: ${state.meshHopEfficiencyPct}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = when {
+                                state.meshHopEfficiencyPct == 0 -> CrimsonPulse
+                                state.isRouteRerouted -> ElectricAmber
+                                else -> PhosphorEmerald
+                            }
+                        )
+                        Text(
+                            text = if (state.activeRoute != null) {
+                                "${state.activeRoute.hopCount} HOPS // ${state.activeRoute.totalLatencyMs}ms"
+                            } else {
+                                "${state.connectedPeerCount} PEERS ONLINE"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
+                }
+
+                // Honest empty-peer Liquid Glass notice when 0 other real devices are nearby
+                if (state.nodes.size <= 1) {
+                    LiquidGlassSurface(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(10.dp)
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(GunmetalPanel.copy(alpha = 0.90f))
-                            .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .fillMaxWidth(),
+                        cornerRadius = 14.dp,
+                        accentColor = TacticalCyan,
+                        batterySaver = state.batterySaverEnabled
                     ) {
-                        Text(
-                            text = "0 REAL PEERS DETECTED ON RADAR",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ElectricAmber,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Open Aether-Mesh on both Phone & Tablet (same Wi-Fi / Mobile Hotspot or Bluetooth BLE) to connect directly.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary,
-                            textAlign = TextAlign.Center
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "0 REAL PEERS ON RADAR",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ElectricAmber,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Connect Phone & Tablet on Wi-Fi/Hotspot, BLE HypRange, BT Classic, or Wi-Fi Direct.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
@@ -420,10 +611,10 @@ fun MeshRadarScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(GunmetalElevated)
-                        .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x990C1422))
+                        .border(1.dp, PanelBorder, RoundedCornerShape(14.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -436,8 +627,10 @@ fun MeshRadarScreen(
                         Text(
                             text = buildString {
                                 append("ID ${selectedNode.id}")
-                                selectedNode.ipAddress?.let { append(" • IP $it:${selectedNode.tcpPort ?: 0}") }
+                                selectedNode.ipAddress?.let { append(" • IP $it:${selectedNode.tcpPort ?: 45873}") }
                                 selectedNode.bleAddress?.let { append(" • BLE $it (${selectedNode.signalDbm}dBm)") }
+                                selectedNode.btClassicAddress?.let { append(" • BT $it") }
+                                selectedNode.wifiDirectAddress?.let { append(" • P2P $it") }
                                 if (selectedNode.distanceMeters > 0f) {
                                     append(" • ~${selectedNode.distanceMeters.roundToInt()}m")
                                 }
@@ -447,30 +640,48 @@ fun MeshRadarScreen(
                         )
                     }
                     if (selectedNode.role != NodeRole.SELF) {
-                        OutlinedButton(
-                            onClick = { onToggleNodeOnline(selectedNode.id) },
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("toggle_selected_node_button"),
-                            shape = RoundedCornerShape(4.dp),
-                            border = BorderStroke(
-                                1.dp,
-                                if (selectedNode.isOnline) CrimsonPulse else PhosphorEmerald
-                            ),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PowerSettingsNew,
-                                contentDescription = null,
-                                tint = if (selectedNode.isOnline) CrimsonPulse else PhosphorEmerald,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (selectedNode.isOnline) "KNOCK OUT" else "REVIVE",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (selectedNode.isOnline) CrimsonPulse else PhosphorEmerald
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val wfdAddr = selectedNode.wifiDirectAddress
+                            if (wfdAddr != null && !selectedNode.wifiDirectConnected) {
+                                OutlinedButton(
+                                    onClick = { onConnectWifiDirectPeer(wfdAddr) },
+                                    modifier = Modifier.minimumInteractiveComponentSize(),
+                                    shape = RoundedCornerShape(50),
+                                    border = BorderStroke(1.dp, ElectricAmber),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "PAIR P2P",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = ElectricAmber
+                                    )
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { onToggleNodeOnline(selectedNode.id) },
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("toggle_selected_node_button"),
+                                shape = RoundedCornerShape(50),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (selectedNode.isOnline) CrimsonPulse else PhosphorEmerald
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PowerSettingsNew,
+                                    contentDescription = null,
+                                    tint = if (selectedNode.isOnline) CrimsonPulse else PhosphorEmerald,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (selectedNode.isOnline) "MUTE" else "REVIVE",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (selectedNode.isOnline) CrimsonPulse else PhosphorEmerald
+                                )
+                            }
                         }
                     } else {
                         IconButton(
@@ -496,10 +707,14 @@ fun MeshRadarScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "MESH RANGE: ${(state.linkRangeKm * 1000).roundToInt()}m",
+                    text = if (state.hypRangeEnabled) {
+                        "HYPRANGE: ${(state.linkRangeKm * 1450).roundToInt()}m"
+                    } else {
+                        "RANGE: ${(state.linkRangeKm * 1000).roundToInt()}m"
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary,
-                    modifier = Modifier.width(125.dp)
+                    color = if (state.hypRangeEnabled) HypRangeViolet else TextSecondary,
+                    modifier = Modifier.width(128.dp)
                 )
                 Slider(
                     value = state.linkRangeKm,
@@ -509,8 +724,8 @@ fun MeshRadarScreen(
                         .weight(1f)
                         .testTag("link_range_slider"),
                     colors = SliderDefaults.colors(
-                        thumbColor = PhosphorEmerald,
-                        activeTrackColor = PhosphorEmerald,
+                        thumbColor = if (state.hypRangeEnabled) HypRangeViolet else PhosphorEmerald,
+                        activeTrackColor = if (state.hypRangeEnabled) HypRangeViolet else PhosphorEmerald,
                         inactiveTrackColor = PanelBorder
                     )
                 )
@@ -518,15 +733,17 @@ fun MeshRadarScreen(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Action Buttons: Rescan Real Peers & Blackout Test
+            // Action Buttons: Rescan Multi-Radio Peers & Blackout Test
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(
                     onClick = {
-                        if (state.bleStatus == BleRadioStatus.PERMISSION_REQUIRED) {
-                            blePermissionLauncher.launch(blePermissions)
+                        if (state.bleStatus == BleRadioStatus.PERMISSION_REQUIRED ||
+                            state.wifiDirectStatus == WifiP2pStatus.PERMISSION_REQUIRED
+                        ) {
+                            radioPermissionLauncher.launch(radioPermissions)
                         }
                         onRescanPeers()
                     },
@@ -534,8 +751,11 @@ fun MeshRadarScreen(
                         .weight(1f)
                         .minimumInteractiveComponentSize()
                         .testTag("rescan_peers_button"),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, TacticalCyan.copy(alpha = 0.8f)),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, TacticalCyan.copy(alpha = 0.78f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = TacticalCyan.copy(alpha = 0.08f)
+                    ),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                 ) {
                     Icon(
@@ -544,9 +764,9 @@ fun MeshRadarScreen(
                         tint = TacticalCyan,
                         modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
-                        text = "RESCAN PEERS",
+                        text = "RESCAN RADIOS",
                         style = MaterialTheme.typography.labelMedium,
                         color = TacticalCyan,
                         maxLines = 1
@@ -559,9 +779,9 @@ fun MeshRadarScreen(
                         .weight(1f)
                         .minimumInteractiveComponentSize()
                         .testTag("blackout_toggle_button"),
-                    shape = RoundedCornerShape(4.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = if (state.blackoutActive) ElectricAmber.copy(alpha = 0.18f) else Color.Transparent
+                        containerColor = if (state.blackoutActive) ElectricAmber.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.04f)
                     ),
                     border = BorderStroke(
                         1.dp,
@@ -575,7 +795,7 @@ fun MeshRadarScreen(
                         tint = if (state.blackoutActive) ElectricAmber else TextSecondary,
                         modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
                         text = if (state.blackoutActive) "END BLACKOUT" else "SIM BLACKOUT",
                         style = MaterialTheme.typography.labelMedium,
@@ -593,12 +813,12 @@ fun MeshRadarScreen(
                     .fillMaxWidth()
                     .minimumInteractiveComponentSize()
                     .testTag("broadcast_sos_button"),
-                shape = RoundedCornerShape(4.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = CrimsonPulse,
                     contentColor = TextPrimary
                 ),
-                contentPadding = PaddingValues(vertical = 12.dp)
+                contentPadding = PaddingValues(vertical = 13.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Router,
@@ -638,14 +858,15 @@ fun MeshRadarScreen(
                     },
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
                     singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .weight(1f)
                         .testTag("p2p_message_input"),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = TacticalCyan,
                         unfocusedBorderColor = PanelBorder,
-                        focusedContainerColor = ObsidianBg,
-                        unfocusedContainerColor = ObsidianBg,
+                        focusedContainerColor = Color(0x99060910),
+                        unfocusedContainerColor = Color(0x99060910),
                         cursorColor = TacticalCyan
                     )
                 )
@@ -659,12 +880,12 @@ fun MeshRadarScreen(
                     modifier = Modifier
                         .minimumInteractiveComponentSize()
                         .testTag("send_p2p_button"),
-                    shape = RoundedCornerShape(4.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = TacticalCyan,
                         contentColor = ObsidianBg
                     ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
@@ -679,9 +900,9 @@ fun MeshRadarScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(ObsidianBg)
-                        .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x99060910))
+                        .border(1.dp, PanelBorder, RoundedCornerShape(14.dp))
                         .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -703,10 +924,10 @@ fun MeshRadarScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(175.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFF05070A))
-                    .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-                    .padding(8.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xAA05070C))
+                    .border(1.dp, PanelBorder, RoundedCornerShape(14.dp))
+                    .padding(10.dp)
                     .testTag("terminal_log_list"),
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
@@ -715,6 +936,93 @@ fun MeshRadarScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RadioModeTile(
+    title: String,
+    subtitle: String,
+    statusBadge: String,
+    icon: ImageVector,
+    active: Boolean,
+    accentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .minimumInteractiveComponentSize()
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = if (active) {
+                        listOf(accentColor.copy(alpha = 0.22f), Color(0xAA0B1320))
+                    } else {
+                        listOf(Color.White.copy(alpha = 0.06f), Color(0x99080E18))
+                    }
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    colors = if (active) {
+                        listOf(Color.White.copy(alpha = 0.35f), accentColor.copy(alpha = 0.65f))
+                    } else {
+                        listOf(Color.White.copy(alpha = 0.14f), PanelBorder)
+                    }
+                ),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 9.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = if (active) accentColor else TextSecondary,
+                modifier = Modifier.size(16.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (active) accentColor.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f))
+                    .border(
+                        1.dp,
+                        if (active) accentColor.copy(alpha = 0.6f) else PanelBorder,
+                        RoundedCornerShape(50)
+                    )
+                    .padding(horizontal = 6.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = statusBadge,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (active) accentColor else TextMuted,
+                    fontSize = 9.sp
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) accentColor.copy(alpha = 0.9f) else TextMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -728,9 +1036,9 @@ private fun P2pMessageRow(msg: P2pCommsMessage) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-            .background(accent.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+            .background(accent.copy(alpha = 0.09f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 7.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -810,6 +1118,8 @@ private fun TacticalRadarCanvas(
         ),
         label = "link_phase"
     )
+
+    val sweepColor = if (state.hypRangeEnabled) HypRangeViolet else PhosphorEmerald
 
     Canvas(
         modifier = modifier
@@ -904,8 +1214,8 @@ private fun TacticalRadarCanvas(
                     brush = Brush.sweepGradient(
                         0.0f to Color.Transparent,
                         0.82f to Color.Transparent,
-                        0.96f to PhosphorEmerald.copy(alpha = 0.08f),
-                        1.0f to PhosphorEmerald.copy(alpha = 0.24f),
+                        0.96f to sweepColor.copy(alpha = 0.08f),
+                        1.0f to sweepColor.copy(alpha = 0.28f),
                         center = center
                     ),
                     startAngle = 0f,
@@ -920,7 +1230,7 @@ private fun TacticalRadarCanvas(
         for (km in 1..5) {
             val r = maxRadius * (km / 5f)
             drawCircle(
-                color = if (km == 5) PanelBorder.copy(alpha = 0.9f) else PanelBorder.copy(alpha = 0.55f),
+                color = if (km == 5) PanelBorder.copy(alpha = 0.95f) else PanelBorder.copy(alpha = 0.55f),
                 radius = r,
                 center = center,
                 style = Stroke(
@@ -971,7 +1281,7 @@ private fun TacticalRadarCanvas(
                 link.isRerouteHighlight -> {
                     if (!state.batterySaverEnabled) {
                         drawLine(
-                            color = ElectricAmber.copy(alpha = 0.28f),
+                            color = ElectricAmber.copy(alpha = 0.30f),
                             start = p1,
                             end = p2,
                             strokeWidth = 6.dp.toPx()
@@ -988,14 +1298,14 @@ private fun TacticalRadarCanvas(
                 link.isActiveRoute -> {
                     if (!state.batterySaverEnabled) {
                         drawLine(
-                            color = PhosphorEmerald.copy(alpha = 0.28f),
+                            color = sweepColor.copy(alpha = 0.30f),
                             start = p1,
                             end = p2,
                             strokeWidth = 5.dp.toPx()
                         )
                     }
                     drawLine(
-                        color = PhosphorEmerald,
+                        color = sweepColor,
                         start = p1,
                         end = p2,
                         strokeWidth = 2.dp.toPx(),
@@ -1004,7 +1314,7 @@ private fun TacticalRadarCanvas(
                 }
                 else -> {
                     drawLine(
-                        color = PhosphorEmerald.copy(alpha = if (state.batterySaverEnabled) 0.16f else 0.25f),
+                        color = sweepColor.copy(alpha = if (state.batterySaverEnabled) 0.16f else 0.28f),
                         start = p1,
                         end = p2,
                         strokeWidth = 1.dp.toPx()
@@ -1016,16 +1326,8 @@ private fun TacticalRadarCanvas(
         for (pin in state.pins) {
             val pos = toScreen(pin.xKm, pin.yKm)
             val color = pinColor(pin.category)
-            drawCircle(
-                color = color.copy(alpha = 0.25f),
-                radius = 11.dp.toPx(),
-                center = pos
-            )
-            drawCircle(
-                color = color,
-                radius = 5.dp.toPx(),
-                center = pos
-            )
+            drawCircle(color = color.copy(alpha = 0.25f), radius = 11.dp.toPx(), center = pos)
+            drawCircle(color = color, radius = 5.dp.toPx(), center = pos)
             val pinLabel = textMeasurer.measure(
                 text = pin.category.shortCode,
                 style = TextStyle(
@@ -1047,56 +1349,31 @@ private fun TacticalRadarCanvas(
             val nodeColor = when {
                 !node.isOnline -> CrimsonPulse
                 node.role == NodeRole.SELF -> TacticalCyan
-                node.role == NodeRole.GATEWAY -> ElectricAmber
+                node.isCodedPhy -> HypRangeViolet
+                node.wifiDirectConnected -> ElectricAmber
                 else -> PhosphorEmerald
             }
 
             if (isSelected) {
                 drawCircle(
                     color = TextPrimary,
-                    radius = 14.dp.toPx(),
+                    radius = 15.dp.toPx(),
                     center = pos,
                     style = Stroke(width = 1.5.dp.toPx())
                 )
             }
 
             if (!node.isOnline) {
-                drawCircle(
-                    color = CrimsonPulse.copy(alpha = 0.18f),
-                    radius = 10.dp.toPx(),
-                    center = pos
-                )
+                drawCircle(color = CrimsonPulse.copy(alpha = 0.18f), radius = 10.dp.toPx(), center = pos)
                 val xSize = 5.dp.toPx()
-                drawLine(
-                    color = CrimsonPulse,
-                    start = Offset(pos.x - xSize, pos.y - xSize),
-                    end = Offset(pos.x + xSize, pos.y + xSize),
-                    strokeWidth = 2.dp.toPx()
-                )
-                drawLine(
-                    color = CrimsonPulse,
-                    start = Offset(pos.x + xSize, pos.y - xSize),
-                    end = Offset(pos.x - xSize, pos.y + xSize),
-                    strokeWidth = 2.dp.toPx()
-                )
+                drawLine(color = CrimsonPulse, start = Offset(pos.x - xSize, pos.y - xSize), end = Offset(pos.x + xSize, pos.y + xSize), strokeWidth = 2.dp.toPx())
+                drawLine(color = CrimsonPulse, start = Offset(pos.x + xSize, pos.y - xSize), end = Offset(pos.x - xSize, pos.y + xSize), strokeWidth = 2.dp.toPx())
             } else {
                 if (!state.batterySaverEnabled) {
-                    drawCircle(
-                        color = nodeColor.copy(alpha = 0.22f),
-                        radius = 12.dp.toPx(),
-                        center = pos
-                    )
+                    drawCircle(color = nodeColor.copy(alpha = 0.24f), radius = 13.dp.toPx(), center = pos)
                 }
-                drawCircle(
-                    color = ObsidianBg,
-                    radius = 7.dp.toPx(),
-                    center = pos
-                )
-                drawCircle(
-                    color = nodeColor,
-                    radius = 5.5.dp.toPx(),
-                    center = pos
-                )
+                drawCircle(color = ObsidianBg, radius = 7.dp.toPx(), center = pos)
+                drawCircle(color = nodeColor, radius = 5.5.dp.toPx(), center = pos)
             }
 
             val labelText = when (node.role) {
@@ -1131,16 +1408,8 @@ private fun TacticalRadarCanvas(
                 val pulsePos = Offset(px, py)
                 val pulseColor = if (pulse.isRerouted) ElectricAmber else CrimsonPulse
 
-                drawCircle(
-                    color = pulseColor.copy(alpha = 0.35f),
-                    radius = 14.dp.toPx(),
-                    center = pulsePos
-                )
-                drawCircle(
-                    color = TextPrimary,
-                    radius = 5.dp.toPx(),
-                    center = pulsePos
-                )
+                drawCircle(color = pulseColor.copy(alpha = 0.35f), radius = 14.dp.toPx(), center = pulsePos)
+                drawCircle(color = TextPrimary, radius = 5.dp.toPx(), center = pulsePos)
             }
         }
     }

@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -132,8 +133,8 @@ fun TelemetryAndPinsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
-                    .background(ObsidianBg, RoundedCornerShape(4.dp))
-                    .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
+                    .background(Color(0x99060910), RoundedCornerShape(12.dp))
+                    .border(1.dp, PanelBorder, RoundedCornerShape(12.dp))
                     .padding(6.dp)
             )
 
@@ -146,9 +147,9 @@ fun TelemetryAndPinsScreen(
                     .border(
                         1.dp,
                         if (state.batterySaverEnabled) ElectricAmber.copy(alpha = 0.7f) else PanelBorder,
-                        RoundedCornerShape(4.dp)
+                        RoundedCornerShape(12.dp)
                     )
-                    .background(ObsidianBg, RoundedCornerShape(4.dp))
+                    .background(Color(0x99060910), RoundedCornerShape(12.dp))
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -240,11 +241,11 @@ fun TelemetryAndPinsScreen(
                                     .border(
                                         1.dp,
                                         if (armed) color else PanelBorder,
-                                        RoundedCornerShape(4.dp)
+                                        RoundedCornerShape(12.dp)
                                     )
                                     .background(
                                         if (armed) color.copy(alpha = 0.16f) else ObsidianBg,
-                                        RoundedCornerShape(4.dp)
+                                        RoundedCornerShape(12.dp)
                                     )
                                     .padding(8.dp)
                             ) {
@@ -280,7 +281,7 @@ fun TelemetryAndPinsScreen(
                                         .fillMaxWidth()
                                         .testTag("pin_quick_drop_${cat.name.lowercase()}")
                                         .minimumInteractiveComponentSize(),
-                                    shape = RoundedCornerShape(3.dp),
+                                    shape = RoundedCornerShape(50),
                                     border = BorderStroke(1.dp, color.copy(alpha = 0.55f)),
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp)
                                 ) {
@@ -301,8 +302,8 @@ fun TelemetryAndPinsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-                        .background(ObsidianBg, RoundedCornerShape(4.dp))
+                        .border(1.dp, PanelBorder, RoundedCornerShape(12.dp))
+                        .background(Color(0x99060910), RoundedCornerShape(12.dp))
                         .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -367,7 +368,7 @@ fun TelemetryAndPinsScreen(
                         modifier = Modifier
                             .testTag("toggle_wrong_key_button")
                             .minimumInteractiveComponentSize(),
-                        shape = RoundedCornerShape(3.dp),
+                        shape = RoundedCornerShape(50),
                         border = BorderStroke(
                             1.dp,
                             if (state.simulateWrongKey) CrimsonPulse else TacticalCyan.copy(alpha = 0.6f)
@@ -399,8 +400,8 @@ fun TelemetryAndPinsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, statusColor.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
-                        .background(statusColor.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
+                        .border(1.dp, statusColor.copy(alpha = 0.6f), RoundedCornerShape(50))
+                        .background(statusColor.copy(alpha = 0.12f), RoundedCornerShape(50))
                         .padding(horizontal = 8.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -438,8 +439,8 @@ fun TelemetryAndPinsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-                        .background(ObsidianBg, RoundedCornerShape(4.dp))
+                        .border(1.dp, PanelBorder, RoundedCornerShape(12.dp))
+                        .background(Color(0x99060910), RoundedCornerShape(12.dp))
                         .padding(8.dp)
                         .horizontalScroll(rememberScrollState())
                 ) {
@@ -467,8 +468,8 @@ fun TelemetryAndPinsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(1.dp, PanelBorder, RoundedCornerShape(4.dp))
-                        .background(ObsidianBg, RoundedCornerShape(4.dp))
+                        .border(1.dp, PanelBorder, RoundedCornerShape(12.dp))
+                        .background(Color(0x99060910), RoundedCornerShape(12.dp))
                         .padding(8.dp)
                         .horizontalScroll(rememberScrollState())
                 ) {
