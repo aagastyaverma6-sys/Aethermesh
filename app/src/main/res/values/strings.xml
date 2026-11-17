@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Aether-Mesh</string>
+    <string name="app_subtitle">ZERO-INFRASTRUCTURE TACTICAL COMMAND</string>
+    <string name="tab_radar">RADAR</string>
+    <string name="tab_telemetry">TELEMETRY</string>
+    <string name="tab_acoustic">ACOUSTIC</string>
+    <string name="tab_ai">TRIAGE AI</string>
+    <string name="btn_add_node">+ NODE</string>
+    <string name="btn_blackout">BLACKOUT</string>
+    <string name="btn_broadcast_sos">BROADCAST SOS PACKET</string>
+    <string name="btn_transmit_audio">TRANSMIT AUDIO PULSE</string>
+    <string name="btn_abort_audio">ABORT PULSE</string>
+    <string name="cd_radar_canvas">Interactive tactical mesh network radar map</string>
+    <string name="cd_waveform_canvas">Acoustic FSK audio waveform visualizer</string>
+    <string name="cd_battery_saver">Toggle battery saver mode</string>
+    <string name="cd_send_triage">Send survival triage query</string>
+    <string name="cd_clear_ai">Reset AI triage session</string>
+</resources>

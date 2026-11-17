@@ -1,0 +1,6 @@
+{
+  "name": "Aether-Mesh",
+  "description": "Zero-Infrastructure Tactical Emergency & AI Command Center with interactive mesh radar, acoustic FSK SOS modem, tactical hazard pins, and Gemini survival triage AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
