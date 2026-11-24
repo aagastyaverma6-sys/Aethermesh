@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aether-Mesh — Zero-Infrastructure Tactical Mesh &amp; Offline AI Command</title>
+  <meta name="description" content="Zero-infrastructure tactical emergency mesh networking, HypRange BLE 5+ Coded PHY, AES-128-CBC encryption, Acoustic FSK modem, and Firebase AI field triage for Android." />
+  <link rel="icon" type="image/png" href="assets/aether-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="ambient-field" aria-hidden="true">
+    <div class="ambient-orb orb-emerald"></div>
+    <div class="ambient-orb orb-cyan"></div>
+    <div class="ambient-orb orb-violet"></div>
+  </div>
+  <div class="grid-overlay" aria-hidden="true"></div>
+
+  <!-- Top Liquid Glass Header -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#top" class="brand">
+        <img src="assets/aether-icon.png" alt="Aether-Mesh icon" class="brand-icon" />
+        <div class="brand-text">
+          <span class="brand-name">Aether-Mesh</span>
+          <span class="brand-tag">v1.0 • COM.AETHERMESH.TACTICAL</span>
+        </div>
+      </a>
+
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="#playground">Radar Lab</a>
+        <a href="#radios">4-Radio Stack</a>
+        <a href="#crypto-audio">Crypto &amp; FSK</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#pairing">Quick Start</a>
+      </nav>
+
+      <div class="header-actions">
+        <a href="../README.md" class="btn btn-ghost">Docs</a>
+        <a href="../aether-mesh-debug.apk" download="aether-mesh-debug.apk" class="btn btn-primary">
+          <span class="dot-live" aria-hidden="true"></span>
+          Download APK
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- Hero Section -->
+    <section class="hero container">
+      <div class="hero-copy">
+        <div class="eyebrow-pill">
+          <span class="pill-badge">OFFLINE-FIRST</span>
+          <span>Android 7–16 • AGSL Liquid Glass • Multi-Radio P2P</span>
+        </div>
+
+        <h1>
+          Zero-infrastructure mesh<br />
+          built for <span class="gradient-ink">real radios.</span>
+        </h1>
+
+        <p class="hero-lead">
+          Connect phones and tablets directly without cell towers or routers. Aether-Mesh fuses
+          <strong>LAN/Hotspot TCP</strong>, <strong>HypRange BLE 5+ Coded PHY</strong>,
+          <strong>Bluetooth Classic RFCOMM</strong>, and <strong>Wi-Fi Direct</strong> under
+          AES-128-CBC encryption, an Acoustic FSK audio modem, and Firebase AI field triage.
+        </p>
+
+        <div class="hero-cta">
+          <a href="../aether-mesh-debug.apk" download="aether-mesh-debug.apk" class="btn btn-primary btn-lg">
+            Download Android APK (21 MB)
+          </a>
+          <a href="#playground" class="btn btn-glass btn-lg">
+            Launch Live Lab &darr;
+          </a>
+        </div>
+
+        <div class="spec-strip">
+          <div class="spec-item">
+            <span class="spec-k">RADIOS</span>
+            <span class="spec-v">4 Hardware Transports</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-k">ENCRYPTION</span>
+            <span class="spec-v">AES-128-CBC + Random IV</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-k">FALLBACK</span>
+            <span class="spec-v">44.1 kHz Audio FSK + Morse</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-k">OPTICS</span>
+            <span class="spec-v">API 33+ AGSL Refraction</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hero Cupertino Liquid Glass App Showcase Card -->
+      <div class="hero-card-wrap">
+        <div class="liquid-card hero-card">
+          <div class="card-bar">
+            <div class="bar-left">
+              <span class="led led-emerald"></span>
+              <span class="mono-label">AETHER-MESH // HUD PREVIEW</span>
+            </div>
+            <span class="chip chip-violet">HYPRANGE S=8</span>
+          </div>
+
+          <div class="hero-icon-stage">
+            <img src="assets/aether-icon.png" alt="Aether-Mesh Cupertino crystal icon" class="hero-app-icon" />
+            <div class="hero-device-meta">
+              <div class="meta-title">Phone &harr; Tablet Direct Mesh</div>
+              <div class="meta-sub">Real hardware discovery • Zero fake radar nodes</div>
+            </div>
+          </div>
+
+          <div class="mini-matrix">
+            <div class="mini-radio active-emerald">
+              <span class="mini-title">LAN / HOTSPOT</span>
+              <span class="mini-sub">UDP :45872 &bull; TCP :45873</span>
+            </div>
+            <div class="mini-radio active-violet">
+              <span class="mini-title">HYPRANGE BLE 5+</span>
+              <span class="mini-sub">Coded PHY &bull; 1.45&times; Horizon</span>
+            </div>
+            <div class="mini-radio active-cyan">
+              <span class="mini-title">BT CLASSIC</span>
+              <span class="mini-sub">RFCOMM SPP AE76</span>
+            </div>
+            <div class="mini-radio active-amber">
+              <span class="mini-title">WI-FI DIRECT</span>
+              <span class="mini-sub">WifiP2pManager P2P</span>
+            </div>
+          </div>
+
+          <div class="terminal-preview">
+            <div><span class="t-ts">09:12:04</span> <span class="t-ok">[HYPRANGE]</span> BLE 5+ Coded PHY S=8 active &mdash; 1.45&times; link horizon</div>
+            <div><span class="t-ts">09:12:06</span> <span class="t-cyan">[PEER_LAN]</span> Real peer Pixel-Tablet @ 192.168.43.82:45873</div>
+            <div><span class="t-ts">09:12:07</span> <span class="t-ok">[TX_AES]</span> AETHER_AES128_V1 &rarr; 48B verified &bull; EFF 96%</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 1: Interactive Mesh Routing & HypRange Playground -->
+    <section id="playground" class="section container">
+      <div class="section-head">
+        <div>
+          <span class="section-kicker">INTERACTIVE SANDBOX</span>
+          <h2>Mesh Topology &amp; Adaptive Rerouting Lab</h2>
+          <p>
+            Test the exact Dijkstra routing and <strong>HypRange (1.45&times;)</strong> horizon logic used in
+            <code>MeshRouter.kt</code>. Drag peers on the grid, mute any relay node to break a link, and watch packets reroute around dead zones.
+          </p>
+        </div>
+        <div class="honest-note">
+          <span class="chip chip-amber">BROWSER SANDBOX</span>
+          <span class="note-copy">The Android APK shows 0 fake nodes and only real discovered devices; this web lab lets you drag test nodes directly.</span>
+        </div>
+      </div>
+
+      <div class="playground-grid">
+        <div class="liquid-card radar-card">
+          <div class="card-bar">
+            <div class="bar-left">
+              <span class="led led-emerald" id="radarLed"></span>
+              <span class="mono-label">TOPOLOGY RADAR // 5 KM GRID</span>
+            </div>
+            <span class="chip chip-cyan" id="radarEfficiencyBadge">EFF: 96%</span>
+          </div>
+
+          <div class="radar-canvas-box">
+            <canvas id="radarCanvas" width="560" height="560" aria-label="Interactive mesh topology radar"></canvas>
+            <div class="radar-overlay-tl">
+              <span class="mono-tiny">HOST: YOU [0.0, 0.0]</span>
+              <span class="mono-tiny" id="radarHorizonTag">HORIZON: 2200m</span>
+            </div>
+            <div class="radar-overlay-tr" id="radarRouteBadge">ROUTE: 2 HOPS</div>
+          </div>
+
+          <div class="radar-controls">
+            <div class="slider-row">
+              <label for="rangeSlider" class="mono-label" id="rangeLabel">BASE RANGE: 2200m</label>
+              <input id="rangeSlider" type="range" min="700" max="4200" step="100" value="2200" />
+            </div>
+
+            <div class="btn-row">
+              <button type="button" id="toggleHypRangeBtn" class="btn btn-glass">
+                HypRange Coded PHY: <strong id="hypRangeState">OFF</strong>
+              </button>
+              <button type="button" id="toggleBlackoutBtn" class="btn btn-amber">
+                Simulate Relay Outage
+              </button>
+              <button type="button" id="broadcastSosBtn" class="btn btn-crimson">
+                Broadcast SOS Pulse
+              </button>
+              <button type="button" id="resetRadarBtn" class="btn btn-ghost">
+                Reset
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sandbox-side">
+          <div class="liquid-card">
+            <div class="card-bar">
+              <div class="bar-left">
+                <span class="led led-cyan"></span>
+                <span class="mono-label">ROUTING METRICS &amp; RELAY CONTROL</span>
+              </div>
+              <span class="chip chip-emerald" id="routeStatusChip">OPTIMAL</span>
+            </div>
+
+            <div class="metrics-pair">
+              <div class="metric-box">
+                <span class="metric-label">HOP EFFICIENCY</span>
+                <span class="metric-value emerald" id="metricEff">96%</span>
+                <span class="metric-sub" id="metricPathDesc">YOU &rarr; RELAY-A &rarr; GATEWAY</span>
+              </div>
+              <div class="metric-box">
+                <span class="metric-label">ACTIVE PEERS</span>
+                <span class="metric-value cyan" id="metricPeers">4 / 4</span>
+                <span class="metric-sub" id="metricLatency">24 ms total latency</span>
+              </div>
+            </div>
+
+            <div class="node-list-head">
+              <span class="mono-label">TAP A RELAY TO MUTE / REVIVE</span>
+            </div>
+            <div id="nodeToggleList" class="node-pills"></div>
+          </div>
+
+          <div class="liquid-card">
+            <div class="card-bar">
+              <div class="bar-left">
+                <span class="led led-amber"></span>
+                <span class="mono-label">LIVE PACKET &amp; REROUTE TERMINAL</span>
+              </div>
+              <span class="mono-tiny">AES-128-CBC</span>
+            </div>
+            <div id="sandboxLog" class="sandbox-log" aria-live="polite"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: 4-Radio Hardware Transport Stack -->
+    <section id="radios" class="section container">
+      <div class="section-head">
+        <div>
+          <span class="section-kicker">HARDWARE LAYER</span>
+          <h2>Four Real Device-to-Device Radio Modes</h2>
+          <p>
+            Aether-Mesh routes encrypted packets across whichever physical interface reaches your paired phone or tablet fastest.
+          </p>
+        </div>
+      </div>
+
+      <div class="radio-tabs" role="tablist" aria-label="Radio transport modes">
+        <button type="button" class="radio-tab active" data-radio="lan" role="tab" aria-selected="true">
+          <span class="tab-dot emerald"></span>
+          LAN / Hotspot
+        </button>
+        <button type="button" class="radio-tab" data-radio="hyprange" role="tab" aria-selected="false">
+          <span class="tab-dot violet"></span>
+          HypRange BLE 5+
+        </button>
+        <button type="button" class="radio-tab" data-radio="btclassic" role="tab" aria-selected="false">
+          <span class="tab-dot cyan"></span>
+          Bluetooth Classic
+        </button>
+        <button type="button" class="radio-tab" data-radio="wifidirect" role="tab" aria-selected="false">
+          <span class="tab-dot amber"></span>
+          Wi-Fi Direct
+        </button>
+      </div>
+
+      <div class="liquid-card radio-detail-card">
+        <div class="radio-detail-grid">
+          <div>
+            <div class="chip-row">
+              <span class="chip chip-emerald" id="radioBadge">PRIORITY 1</span>
+              <span class="mono-tiny" id="radioClass">LanMeshTransport.kt</span>
+            </div>
+            <h3 id="radioTitle">LAN &amp; Mobile Hotspot Mesh</h3>
+            <p id="radioDesc" class="radio-desc"></p>
+            <ul id="radioBullets" class="spec-bullets"></ul>
+          </div>
+          <div class="code-panel">
+            <div class="code-bar">
+              <span class="mono-tiny" id="radioCodeTitle">DISCOVERY &amp; TRANSPORT PROFILE</span>
+            </div>
+            <pre><code id="radioCode"></code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Real WebCrypto AES-128 + Real WebAudio FSK Lab -->
+    <section id="crypto-audio" class="section container">
+      <div class="section-head">
+        <div>
+          <span class="section-kicker">CRYPTOGRAPHY &amp; ACOUSTIC FALLBACK</span>
+          <h2>AES-128-CBC Inspector &amp; Live FSK Audio Modem</h2>
+          <p>
+            Both labs below execute real cryptography (<code>window.crypto.subtle</code>) and real frequency-shift keying audio synthesis (<code>AudioContext</code>) inside your browser.
+          </p>
+        </div>
+      </div>
+
+      <div class="lab-split">
+        <!-- Real AES-128 Lab -->
+        <div class="liquid-card">
+          <div class="card-bar">
+            <div class="bar-left">
+              <span class="led led-cyan"></span>
+              <span class="mono-label">AES-128-CBC PACKET INSPECTOR</span>
+            </div>
+            <span class="chip chip-emerald" id="cryptoVerifyBadge">VERIFIED</span>
+          </div>
+
+          <div class="field-group">
+            <label for="cryptoInput" class="mono-label">TACTICAL PAYLOAD MESSAGE</label>
+            <div class="input-action-row">
+              <input id="cryptoInput" type="text" value="TEAM ALPHA AT NORTH SHELTER • 2 MEDICS NEEDED" maxlength="80" />
+              <button type="button" id="encryptBtn" class="btn btn-primary">Encrypt</button>
+            </div>
+          </div>
+
+          <div class="tamper-row">
+            <span class="mono-tiny" id="cryptoFingerprint">KEY#TAC-01 // AETHER-TAC-K128!</span>
+            <button type="button" id="toggleTamperBtn" class="btn btn-ghost btn-sm">
+              Test Rogue Key
+            </button>
+          </div>
+
+          <div class="hex-box">
+            <div class="mono-tiny label-amber">RAW IV (16B) + AES-128 CIPHERTEXT HEX</div>
+            <pre id="cryptoHexOut"></pre>
+          </div>
+
+          <div class="hex-box">
+            <div class="mono-tiny label-emerald" id="cryptoJsonLabel">DECRYPTED JSON PAYLOAD (AETHER_AES128_V1)</div>
+            <pre id="cryptoJsonOut"></pre>
+          </div>
+        </div>
+
+        <!-- Real Web Audio FSK Lab -->
+        <div class="liquid-card">
+          <div class="card-bar">
+            <div class="bar-left">
+              <span class="led led-amber" id="fskLed"></span>
+              <span class="mono-label">ACOUSTIC FSK FALLBACK MODEM</span>
+            </div>
+            <span class="chip chip-cyan" id="fskStatusBadge">STANDBY</span>
+          </div>
+
+          <div class="band-switch">
+            <button type="button" class="band-btn active" data-band="audible" id="bandAudibleBtn">
+              Audible FSK <span>1.2 / 2.2 kHz</span>
+            </button>
+            <button type="button" class="band-btn" data-band="highband" id="bandHighBtn">
+              High-Band <span>6.8 / 8.2 kHz</span>
+            </button>
+          </div>
+
+          <div class="field-group">
+            <label for="fskInput" class="mono-label">EMERGENCY ASCII PAYLOAD</label>
+            <input id="fskInput" type="text" value="TRAPPED 2ND FLOOR NEED MEDIC" maxlength="36" />
+          </div>
+
+          <canvas id="fskWaveform" width="520" height="104" aria-label="FSK waveform visualizer"></canvas>
+
+          <div class="btn-row">
+            <button type="button" id="transmitFskBtn" class="btn btn-primary" style="flex:1;">
+              Transmit Real Audio Pulse
+            </button>
+            <button type="button" id="stopFskBtn" class="btn btn-ghost">
+              Stop
+            </button>
+          </div>
+
+          <div class="hex-box">
+            <div class="mono-tiny label-emerald">8-BIT BINARY FSK BITSTREAM (~62.5 BPS)</div>
+            <pre id="fskBinaryOut" class="wrap-pre"></pre>
+          </div>
+
+          <div class="hex-box">
+            <div class="mono-tiny label-amber">ITU MORSE SEQUENCE</div>
+            <pre id="fskMorseOut" class="wrap-pre"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Architecture, Liquid Glass & Security Docs -->
+    <section id="architecture" class="section container">
+      <div class="section-head">
+        <div>
+          <span class="section-kicker">TECHNICAL SPECIFICATION</span>
+          <h2>Optics, AI Triage &amp; Play-Compliant Security</h2>
+          <p>Designed cleanly around Jetpack Compose, hardware-accelerated shaders, and scoped permissions.</p>
+        </div>
+      </div>
+
+      <div class="doc-grid">
+        <article class="liquid-card doc-card">
+          <div class="doc-tag cyan">AGSL + RENDEREFFECT</div>
+          <h3>Cupertino Liquid Glass Engine</h3>
+          <p>
+            On Android 13+, <code>LiquidGlassSurface</code> chains a Gaussian blur with an AGSL
+            <code>RuntimeShader</code> computing signed-distance rounded bevels, Snell refraction, liquid wave distortion,
+            chromatic RGB edge dispersion, and directional Fresnel rim specular highlights—automatically throttling on Android 7–12 and Battery Saver mode.
+          </p>
+          <pre class="doc-snippet"><code>RenderEffect.createChainEffect(refractEffect, blurEffect)</code></pre>
+        </article>
+
+        <article class="liquid-card doc-card">
+          <div class="doc-tag emerald">FIREBASE AI LOGIC</div>
+          <h3>Aether-Medic Field Triage</h3>
+          <p>
+            Powered by <code>Firebase.ai</code> (<code>gemini-3.8-flash</code>) with App Check enforcement
+            (Debug provider in dev, ReCAPTCHA Enterprise in release). Streams concise, numbered emergency trauma and water-purification protocols with zero API keys bundled in source code.
+          </p>
+          <pre class="doc-snippet"><code>Firebase.ai.generativeModel("gemini-3.8-flash")</code></pre>
+        </article>
+
+        <article class="liquid-card doc-card">
+          <div class="doc-tag violet">MINIMAL PERMISSIONS</div>
+          <h3>Scoped Nearby Device Access</h3>
+          <p>
+            Uses <code>BLUETOOTH_SCAN</code> and <code>NEARBY_WIFI_DEVICES</code> with
+            <code>usesPermissionFlags="neverForLocation"</code> on Android 12–13+, capping
+            <code>ACCESS_FINE_LOCATION</code> at <code>maxSdkVersion="32"</code> with zero broad storage permissions.
+          </p>
+          <pre class="doc-snippet"><code>android:usesPermissionFlags="neverForLocation"</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <!-- Section 5: Phone <-> Tablet Quick Start -->
+    <section id="pairing" class="section container">
+      <div class="liquid-card cta-banner">
+        <div class="cta-steps">
+          <span class="section-kicker">QUICK START</span>
+          <h2>Connect Your Phone &amp; Tablet in Seconds</h2>
+          <ol class="step-list">
+            <li><strong>Install <code>aether-mesh-debug.apk</code></strong> on both your phone and tablet.</li>
+            <li><strong>Pick any radio path:</strong> join the same Wi-Fi/Hotspot for instant UDP discovery, toggle <strong>HypRange</strong> / BLE 5+, enable <strong>BT Classic SPP</strong>, or pair via <strong>Wi-Fi Direct</strong>.</li>
+            <li><strong>Exchange encrypted comms:</strong> send direct AES-128 messages, drop tactical crowd-pins, or test adaptive rerouting with <strong>SIM BLACKOUT</strong>.</li>
+          </ol>
+        </div>
+
+        <div class="cta-actions">
+          <a href="../aether-mesh-debug.apk" download="aether-mesh-debug.apk" class="btn btn-primary btn-lg">
+            Download APK (21 MB)
+          </a>
+          <a href="../README.md" class="btn btn-glass btn-lg">
+            Read Architecture README
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer container">
+    <div class="footer-left">
+      <img src="assets/aether-icon.png" alt="Aether-Mesh" class="footer-icon" />
+      <span><strong>Aether-Mesh</strong> &bull; Zero-Infrastructure Tactical Mesh &amp; Offline AI Command</span>
+    </div>
+    <div class="footer-right">
+      <a href="#playground">Radar Lab</a>
+      <a href="#radios">Radios</a>
+      <a href="#crypto-audio">Crypto &amp; FSK</a>
+      <a href="../aether-mesh-debug.apk" download="aether-mesh-debug.apk">APK</a>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
